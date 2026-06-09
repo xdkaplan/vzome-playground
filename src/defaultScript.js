@@ -11,7 +11,7 @@ let found = 0;
 for (const b of blue)
   for (const y of yellow)
     for (const r of red) {
-      if (!b.vector().plus(y.vector()).plus(r.vector()).isZero()) continue;
+      if (!b.vector().plus(y.vector()).plus(r.vector()).isOrigin()) continue;
       if (!catalog.add([b, y, r])) continue; // skip symmetry duplicates
 
       const p1 = b.vector();
@@ -21,5 +21,9 @@ for (const b of blue)
       out.strut(p2, origin);
       found++;
     }
+
+for (const b of blue) {
+  out.strut(origin, b.vector());
+}
 
 console.log(`found ${found} closed triangles`);
