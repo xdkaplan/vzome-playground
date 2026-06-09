@@ -279,10 +279,9 @@ function Playground() {
     <>
       <header>
         <div class="brand">
-          <img class="logo" src="/vzome-logo.svg" alt="vZome" />
-          <h1>vZome Playground</h1>
+          <a class="brand-link" href="/gallery"><img class="logo" src="/vzome-logo.svg" alt="vZome" /></a>
+          <a class="brand-link" href="/gallery"><h1>vZome Playground</h1></a>
           <span class="spacer" />
-          <a class="nav-link" href="/gallery">Gallery</a>
         </div>
         <div class="toolbar">
           <Button variant="outlined" size="small" onClick={() => fileInput.click()}>Select input…</Button>
@@ -431,10 +430,10 @@ function Gallery() {
     <>
       <header>
         <div class="brand">
-          <a href="/"><img class="logo" src="/vzome-logo.svg" alt="vZome" /></a>
-          <h1>vZome Playground</h1>
+          <a class="brand-link" href="/gallery"><img class="logo" src="/vzome-logo.svg" alt="vZome" /></a>
+          <a class="brand-link" href="/gallery"><h1>vZome Playground</h1></a>
           <span class="spacer" />
-          <a class="nav-link" href="/">&larr; Playground</a>
+          <a class="create-link" href="/">Create a sketch</a>
         </div>
       </header>
       <main class="gallery-main">
