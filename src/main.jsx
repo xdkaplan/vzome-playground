@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, onMount, Show, For } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
 import Button from '@suid/material/Button';
 import Dialog from '@suid/material/Dialog';
 import DialogTitle from '@suid/material/DialogTitle';
@@ -66,8 +66,8 @@ function composeDescription(title, body) {
 const DEFAULT_TITLE = titleFromDescription(DEFAULT_DESCRIPTION);
 const DEFAULT_BODY = bodyFromDescription(DEFAULT_DESCRIPTION);
 
-// Max length for the plain-text description body.
-const MAX_BODY = 1500;
+// Max length for the plain-text description body — a Fibonacci number (golden).
+const MAX_BODY = 610;
 
 function Playground() {
   const [status, setStatus] = createSignal('Ready.');
@@ -77,6 +77,10 @@ function Playground() {
   const [hasResult, setHasResult] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
   const [codeOpen, setCodeOpen] = createSignal(true);
+  const [viewOpen, setViewOpen] = createSignal(true);
+  const [mobile, setMobile] = createSignal(false); // narrow window: flip/flop one pane at a time
+  let mainEl;
+  let viewAutoCollapsed = false; // true when the window (not a drag) collapsed the 3D pane
   const [shareOpen, setShareOpen] = createSignal(false);
   const [shareStep, setShareStep] = createSignal('choose');
   const [parts, setParts] = createSignal({ words: [], suffix: '' });
@@ -85,12 +89,17 @@ function Playground() {
   const [title, setTitle] = createSignal(DEFAULT_TITLE);
   const [body, setBody] = createSignal(DEFAULT_BODY);
   const [editingDoc, setEditingDoc] = createSignal(false);
-  const [codeW, setCodeW] = createSignal(440); // editor pane width; viewer takes the rest
-  let restoreCodeW = 440; // width to pop back to after a drag collapses the code pane
+  const DEFAULT_CODE_W = 620; // default editor pane width (double-click the divider to reset)
+  const [codeW, setCodeW] = createSignal(DEFAULT_CODE_W); // editor pane width; viewer takes the rest
+  let restoreCodeW = DEFAULT_CODE_W; // width to pop back to after a drag collapses the code pane
 
   // Drag the divider between the code editor and the viewer. Dragging the code
-  // pane below COLLAPSE_AT snaps it shut into a clickable "CODE" gutter.
+  // pane below COLLAPSE_AT snaps it shut into a "CODE" gutter; dragging so the
+  // viewer drops below VIEW_COLLAPSE_AT snaps the viewer into a "3D" gutter.
   const COLLAPSE_AT = 54;
+  const VIEW_COLLAPSE_AT = 160;
+  const DIVIDER_W = 8;
+  const MOBILE_AT = 768; // below this the panes flip/flop one at a time (tablet-portrait boundary)
   const startDragCode = (e) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -98,13 +107,18 @@ function Playground() {
     restoreCodeW = startW;
     const main = e.currentTarget.parentElement;
     const onMove = (ev) => {
-      const max = Math.max(200, main.clientWidth - 240);
       const next = startW + ev.clientX - startX;
+      const viewerW = main.clientWidth - next - DIVIDER_W;
       if (next < COLLAPSE_AT) {
         setCodeOpen(false);
+      } else if (viewerW < VIEW_COLLAPSE_AT) {
+        setViewOpen(false);
+        viewAutoCollapsed = false;        // this was a deliberate drag
+        setCodeW(startW);                 // keep the pre-drag width for restore
       } else {
         setCodeOpen(true);
-        setCodeW(Math.min(max, next));
+        setViewOpen(true);
+        setCodeW(next);
       }
     };
     const onUp = () => {
@@ -117,10 +131,69 @@ function Playground() {
     window.addEventListener('pointerup', onUp);
   };
 
+  const resetDivider = () => {
+    setCodeOpen(true);
+    setViewOpen(true);
+    viewAutoCollapsed = false;
+    setCodeW(DEFAULT_CODE_W);
+    requestAnimationFrame(() => editor?.requestMeasure?.());
+  };
+
   const restoreCode = () => {
     setCodeW(restoreCodeW);
     setCodeOpen(true);
+    if (mobile()) setViewOpen(false); // mobile flip: showing code hides 3D into its gutter
     requestAnimationFrame(() => editor?.requestMeasure?.());
+  };
+
+  const restoreView = () => {
+    setViewOpen(true);
+    if (mobile()) {
+      setCodeOpen(false); // mobile flip: showing 3D hides code into its gutter
+    } else if (mainEl) {
+      // ensure the viewer has room, else the resize below would re-collapse it
+      const maxCode = mainEl.clientWidth - DIVIDER_W - VIEW_COLLAPSE_AT;
+      if (codeW() > maxCode) setCodeW(Math.max(COLLAPSE_AT, maxCode));
+    }
+    viewAutoCollapsed = false;
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  };
+
+  // Keep the layout sane as the window resizes. Below MOBILE_AT, only one of
+  // Code/3D shows at a time (flip/flop). Above it, the 3D pane auto-collapses
+  // when it would get too narrow (and re-opens when there's room again, unless
+  // it was collapsed by hand).
+  const reflow = () => {
+    if (!mainEl) return;
+    const w = mainEl.clientWidth;
+    const nowMobile = w < MOBILE_AT;
+    const wasMobile = mobile();
+    if (nowMobile !== wasMobile) setMobile(nowMobile);
+
+    if (nowMobile) {
+      // exactly one pane open — default to the 3D view with the code guttered
+      if (codeOpen() && viewOpen()) setCodeOpen(false);
+      else if (!codeOpen() && !viewOpen()) setViewOpen(true);
+      viewAutoCollapsed = false;
+      return;
+    }
+
+    // leaving mobile -> show both, then let the responsive check below run
+    if (wasMobile) {
+      setCodeOpen(true);
+      setViewOpen(true);
+      viewAutoCollapsed = false;
+    }
+
+    if (!codeOpen()) return; // code is the gutter; leave the viewer alone
+    const viewerW = w - codeW() - DIVIDER_W;
+    if (viewOpen() && viewerW < VIEW_COLLAPSE_AT) {
+      setViewOpen(false);
+      viewAutoCollapsed = true;
+    } else if (!viewOpen() && viewAutoCollapsed && viewerW >= VIEW_COLLAPSE_AT) {
+      setViewOpen(true);
+      viewAutoCollapsed = false;
+    }
   };
 
   // Editing from a collapsed description expands it; Finish returns it to
@@ -149,6 +222,16 @@ function Playground() {
   let lastMesh = null;
   let templateXml = null;
   let templateDataUrl = null;
+
+  // Responsive layout observer — set up synchronously so onCleanup registers in
+  // the reactive root (avoids leaking/duplicating observers across HMR).
+  onMount(() => {
+    if (!mainEl) return;
+    reflow();
+    const ro = new ResizeObserver(reflow);
+    ro.observe(mainEl);
+    onCleanup(() => ro.disconnect());
+  });
 
   onMount(async () => {
     editor = new EditorView({
@@ -189,6 +272,7 @@ function Playground() {
   });
 
   const run = () => {
+    if (!worker) return; // worker is created in onMount; ignore clicks before it's ready
     setStatus('Running…');
     setOutput('');
     setRunning(true);
@@ -212,13 +296,24 @@ function Playground() {
     try { return JSON.stringify(JSON.parse(lastMesh), null, 2); } catch { return lastMesh; }
   };
 
+  // Title → safe filename: drop characters illegal in filenames, collapse
+  // whitespace to hyphens, trim stray separators; fall back to "mesh".
+  const meshFilename = () => {
+    const name = (title() || '')
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[-.]+|[-.]+$/g, '');
+    return `${name || 'mesh'}.json`;
+  };
+
   const download = () => {
     if (!lastMesh) return;
     const blob = new Blob([prettyMesh()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mesh.json';
+    a.download = meshFilename();
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -313,20 +408,40 @@ function Playground() {
           <span class="spacer" />
         </div>
         <div class="toolbar">
-          <Button variant="outlined" size="small" onClick={() => fileInput.click()}>Select input…</Button>
+          <Button variant="outlined" size="small" onClick={() => fileInput.click()}>
+            {mobile() ? 'Input' : 'Select input…'}
+          </Button>
           <input type="file" ref={fileInput} hidden onChange={onFileChange} />
-          <span class="muted">{inputName()}</span>
+          <Show when={!mobile()}><span class="muted">{inputName()}</span></Show>
           <span class="spacer" />
-          <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
-          <Button variant="outlined" size="small" onClick={download} disabled={!hasResult()}>Download</Button>
-          <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
+          <Show when={mobile()} fallback={
+            <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
+          }>
+            <button class="play-fab" onClick={run} disabled={running()} title="Run">
+              <img src="/play-icon.svg" alt="Run" />
+            </button>
+          </Show>
+          <Show when={mobile()} fallback={
+            <Button variant="outlined" size="small" onClick={download} disabled={!hasResult()}>Download</Button>
+          }>
+            <button class="icon-btn" onClick={download} disabled={!hasResult()} title="Download">
+              <img src="/download-icon.svg" alt="Download" />
+            </button>
+          </Show>
+          <Show when={mobile()} fallback={
+            <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
+          }>
+            <button class="icon-btn" onClick={openShare} title="Share">
+              <img src="/share-icon.svg" alt="Share" />
+            </button>
+          </Show>
         </div>
       </header>
-      <main>
+      <main ref={mainEl}>
         <section
           id="editor-pane"
-          classList={{ collapsed: !codeOpen() }}
-          style={codeOpen() ? { 'flex-basis': `${codeW()}px` } : undefined}
+          classList={{ collapsed: !codeOpen(), fill: codeOpen() && !viewOpen() }}
+          style={codeOpen() && viewOpen() ? { 'flex-basis': `${codeW()}px` } : undefined}
         >
           <button class="code-tab" onClick={restoreCode} title="Show code">
             <img src="/code-icon.svg" alt="" />
@@ -387,10 +502,14 @@ function Playground() {
           </aside>
           <div id="editor" ref={editorEl} />
         </section>
-        <Show when={codeOpen()}>
-          <div class="pane-divider" onPointerDown={startDragCode} title="Drag to resize" />
+        <Show when={codeOpen() && viewOpen() && !mobile()}>
+          <div class="pane-divider" onPointerDown={startDragCode} onDblClick={resetDivider} title="Drag to resize · double-click to reset" />
         </Show>
-        <section id="output-pane">
+        <section id="output-pane" classList={{ collapsed: !viewOpen() }}>
+          <button class="view-tab" onClick={restoreView} title="Show 3D">
+            <img src="/3d-cube.svg" alt="" />
+            <span class="view-tab-label">3D</span>
+          </button>
           <div id="status" class="muted">{status()}</div>
           <vzome-viewer id="viewer" preview={false}> </vzome-viewer>
           <pre id="output">{output()}</pre>
@@ -404,8 +523,9 @@ function Playground() {
             {shareStep() === 'choose' ? 'Choose your characters' : 'Your link is live'}
           </div>
           <Show when={shareStep() === 'choose'}>
-            <div class="share-words-row">
+            <div class="share-words-row" classList={{ stacked: mobile() }}>
               <Button
+                class="reroll-btn"
                 variant="outlined"
                 size="small"
                 startIcon={<span class="reroll-glyph">⟳</span>}

@@ -89,6 +89,15 @@ header {
   gap: 8px;
 }
 
+/* mobile: stack the slug chars, Reroll below them */
+.share-words-row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.share-words-row.stacked .slug-word { flex: 0 0 auto; }
+.share-words-row.stacked .reroll-btn { order: 1; }
+
 .slug-word {
   flex: 1;
   min-width: 0;
@@ -222,6 +231,25 @@ header h1 {
   gap: 8px;
 }
 
+/* mobile toolbar: circular play (Run) — the SVG is the full circle + triangle */
+.play-fab {
+  order: 1; /* sit to the right of Download / Share */
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.play-fab img { width: 100%; height: 100%; display: block; }
+.play-fab:hover { filter: brightness(1.08); }
+.play-fab:disabled { opacity: 0.5; cursor: default; }
+
+.icon-btn:disabled { opacity: 0.4; cursor: default; }
+.icon-btn:disabled:hover { background: none; }
+
 .spacer { flex: 1; }
 
 .muted { color: var(--muted); font-size: 13px; }
@@ -343,14 +371,23 @@ main {
   border-right: 1px solid var(--border);
 }
 
-/* tucked-away code pane: a thin vertical "CODE" gutter, click to restore */
+/* code fills the row when the 3D pane is the gutter */
+#editor-pane.fill { flex: 1; }
+
+/* tucked-away panes: a thin vertical gutter with an icon + label, click to restore */
 #editor-pane.collapsed { flex: 0 0 36px; }
 #editor-pane.collapsed #editor,
 #editor-pane.collapsed #docs-pane { display: none; }
 
-.code-tab { display: none; }
+#output-pane.collapsed { flex: 0 0 36px; }
+#output-pane.collapsed #status,
+#output-pane.collapsed #viewer,
+#output-pane.collapsed #output { display: none; }
 
-#editor-pane.collapsed .code-tab {
+.code-tab, .view-tab { display: none; }
+
+#editor-pane.collapsed .code-tab,
+#output-pane.collapsed .view-tab {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -364,16 +401,18 @@ main {
   padding: 0;
 }
 
-#editor-pane.collapsed .code-tab img { width: 20px; height: 20px; }
+#editor-pane.collapsed .code-tab img,
+#output-pane.collapsed .view-tab img { width: 20px; height: 20px; }
 
-.code-tab-label {
+.code-tab-label, .view-tab-label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--accent);
 }
 
-#editor-pane.collapsed .code-tab:hover { background: rgba(0, 0, 0, 0.04); }
+#editor-pane.collapsed .code-tab:hover,
+#output-pane.collapsed .view-tab:hover { background: rgba(0, 0, 0, 0.04); }
 
 #editor {
   flex: 1;
