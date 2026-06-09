@@ -1,11 +1,5 @@
-// Builds the curated "magic API" that is injected into the user's script scope.
-// Thin by design: it wraps the engine into a small, ergonomic surface and
-// nothing more. Whatever the default triangle script needs defines this
-// surface; we add to it only when a new script genuinely demands it.
-
-// The output collector users push geometry into. Its shape is the one custom,
-// permanent piece of the API, so editor autocomplete derives from it too —
-// see api-completions.js. Single definition, no duplication.
+// Builds the curated "playground API" that is injected into the user's script scope.
+// API completions are separate in api-completions.js
 export function makeOut() {
   return {
     struts: [],

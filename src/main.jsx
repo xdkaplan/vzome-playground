@@ -103,7 +103,6 @@ function Playground() {
   const [status, setStatus] = createSignal('Ready.');
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
-  const [hasResult, setHasResult] = createSignal(false);
   const [running, setRunning] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
   const [shareOpen, setShareOpen] = createSignal(false);
@@ -166,12 +165,10 @@ function Playground() {
         viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
 
         setOutput(payload.logs.join('\n'));
-        setHasResult(true);
       } else if (type === 'SCRIPT_ERROR') {
         const logBlock = payload.logs.length ? payload.logs.join('\n') + '\n\n' : '';
         setStatus('Error: ' + payload.message);
         setOutput(logBlock + (payload.stack || payload.message));
-        setHasResult(false);
       }
     };
 
@@ -182,7 +179,6 @@ function Playground() {
   const run = () => {
     setStatus('Running…');
     setOutput('');
-    setHasResult(false);
     setRunning(true);
     lastMesh = null;
     worker.postMessage({
@@ -196,23 +192,6 @@ function Playground() {
     if (!file) return;
     currentInput = { name: file.name, text: await file.text() };
     setInputName(file.name);
-  };
-
-  const exportMesh = () => {
-    if (!lastMesh) return;
-    const blob = new Blob([JSON.stringify(lastMesh, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'mesh.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const copyMesh = async () => {
-    if (!lastMesh) return;
-    await navigator.clipboard.writeText(JSON.stringify(lastMesh));
-    setStatus('Mesh copied to clipboard.');
   };
 
   const openShare = () => {
@@ -276,7 +255,6 @@ function Playground() {
         const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
         doc.querySelector('ImportSimpleMeshJson').textContent = sk.mesh;
         viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
-        setHasResult(true);
         let edges = 0;
         try { edges = JSON.parse(sk.mesh).edges?.length ?? 0; } catch {}
         setStatus(`Loaded "${pretty}" — ${edges} edges. Press Run to recompute.`);
@@ -312,8 +290,6 @@ function Playground() {
           <span class="muted">{inputName()}</span>
           <span class="spacer" />
           <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
-          <Button variant="outlined" size="small" onClick={exportMesh} disabled={!hasResult()}>Export Mesh</Button>
-          <Button variant="outlined" size="small" onClick={copyMesh} disabled={!hasResult()}>Copy Mesh</Button>
           <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
         </div>
       </header>
