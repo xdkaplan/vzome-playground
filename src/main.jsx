@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, onMount, Show } from 'solid-js';
+import { createSignal, onMount, Show, For } from 'solid-js';
 import Button from '@suid/material/Button';
 import Dialog from '@suid/material/Dialog';
 import DialogTitle from '@suid/material/DialogTitle';
@@ -18,7 +18,21 @@ import './style.css';
 
 const DOC_HTML = marked.parse(DOC_MD);
 
-function App() {
+// Deterministic "visual hash" per sketch — a cheeky DiceBear avatar seeded by
+// the slug. Swap the style for 'thumbs', 'fun-emoji', 'shapes', 'rings', etc.
+const HASH_STYLE = 'miniavs';
+const hashUrl = (slug) =>
+  `https://api.dicebear.com/9.x/${HASH_STYLE}/svg?seed=${encodeURIComponent(slug)}`;
+
+// "stott-cantor-euler-r41be" -> "Stott Cantor Euler R41BE"
+function prettySlug(slug) {
+  const parts = slug.split('-');
+  const suffix = parts.pop();
+  const words = parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  return [...words, suffix.toUpperCase()].join(' ');
+}
+
+function Playground() {
   const [status, setStatus] = createSignal('Ready.');
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
@@ -144,10 +158,12 @@ function App() {
   };
 
   const loadSketch = async (slug) => {
+    const key = slug.toLowerCase(); // slugs are stored lowercase — case-insensitive load
+    const pretty = prettySlug(key);
     try {
-      const res = await fetch('/api/sketch/' + encodeURIComponent(slug));
+      const res = await fetch('/api/sketch/' + encodeURIComponent(key));
       if (!res.ok) {
-        setStatus('Sketch not found: ' + slug);
+        setStatus(`Sketch not found: "${pretty}"`);
         return;
       }
       const sk = await res.json();
@@ -158,9 +174,9 @@ function App() {
         lastMesh = sk.mesh;
         viewer.render(sk.mesh);
         setHasResult(true);
-        setStatus(`Loaded "${slug}" — ${sk.mesh.edges?.length ?? 0} edges. Press Run to recompute.`);
+        setStatus(`Loaded "${pretty}" — ${sk.mesh.edges?.length ?? 0} edges. Press Run to recompute.`);
       } else {
-        setStatus(`Loaded "${slug}". Press Run.`);
+        setStatus(`Loaded "${pretty}". Press Run.`);
       }
     } catch (e) {
       setStatus('Load error: ' + e.message);
@@ -182,6 +198,8 @@ function App() {
         <div class="brand">
           <img class="logo" src="/vzome-logo.svg" alt="vZome" />
           <h1>vZome Playground</h1>
+          <span class="spacer" />
+          <a class="nav-link" href="/gallery">Gallery</a>
         </div>
         <div class="toolbar">
           <Button variant="outlined" size="small" onClick={() => fileInput.click()}>Select input…</Button>
@@ -267,6 +285,61 @@ function App() {
       </Dialog>
     </>
   );
+}
+
+function Gallery() {
+  const [items, setItems] = createSignal(null); // null = loading
+
+  onMount(async () => {
+    try {
+      const res = await fetch('/api/gallery');
+      const data = await res.json();
+      setItems(data.items || []);
+    } catch {
+      setItems([]);
+    }
+  });
+
+  return (
+    <>
+      <header>
+        <div class="brand">
+          <a href="/"><img class="logo" src="/vzome-logo.svg" alt="vZome" /></a>
+          <h1>vZome Playground</h1>
+          <span class="spacer" />
+          <a class="nav-link" href="/">&larr; Playground</a>
+        </div>
+      </header>
+      <main class="gallery-main">
+        <Show when={items() !== null} fallback={<p class="gallery-empty">Loading&hellip;</p>}>
+          <Show
+            when={items().length}
+            fallback={
+              <p class="gallery-empty">
+                No public sketches yet. Publish one with &ldquo;Show in Gallery&rdquo; ticked.
+              </p>
+            }
+          >
+            <div class="gallery-grid">
+              <For each={items()}>
+                {(it) => (
+                  <a class="gallery-card" href={`/s/${it.slug}`}>
+                    <img class="gallery-hash" src={hashUrl(it.slug)} alt="" loading="lazy" />
+                    <span class="gallery-card-name">{prettySlug(it.slug)}</span>
+                  </a>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Show>
+      </main>
+    </>
+  );
+}
+
+function App() {
+  const path = location.pathname.replace(/\/$/, '');
+  return path === '/gallery' ? <Gallery /> : <Playground />;
 }
 
 render(() => <App />, document.getElementById('app'));
