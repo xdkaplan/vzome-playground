@@ -1,29 +1,9 @@
-// Find every closed triangle: three strut directions summing to zero.
-// In scope: field, symmetry, out, input, origin.
-// Axes have .vector(); vectors support .plus(v), .times(n), .isZero().
+// Sea urchin: spike a strut out to every zome direction and cap each tip.
+// In scope: symmetry (orbit), out (strut/ball), origin, field, input.
 
-const catalog = symmetry.catalog();
-const blue   = symmetry.orbit('blue').axes();
-const yellow = symmetry.orbit('yellow').axes();
-const red    = symmetry.orbit('red').axes();
-
-let found = 0;
-for (const b of blue)
-  for (const y of yellow)
-    for (const r of red) {
-      if (!b.vector().plus(y.vector()).plus(r.vector()).isOrigin()) continue;
-      if (!catalog.add([b, y, r])) continue; // skip symmetry duplicates
-
-      const p1 = b.vector();
-      const p2 = p1.plus(y.vector());
-      out.strut(origin, p1);
-      out.strut(p1, p2);
-      out.strut(p2, origin);
-      found++;
-    }
-
-for (const b of blue) {
-  out.strut(origin, b.vector());
-}
-
-console.log(`found ${found} closed triangles`);
+for (const color of ['blue', 'yellow', 'red'])
+  for (const axis of symmetry.orbit(color).axes()) {
+    const tip = axis.vector();
+    out.strut(origin, tip);
+    out.ball(tip);
+  }
