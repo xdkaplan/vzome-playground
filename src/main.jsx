@@ -104,6 +104,7 @@ function Playground() {
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
   const [running, setRunning] = createSignal(false);
+  const [hasResult, setHasResult] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
   const [shareOpen, setShareOpen] = createSignal(false);
   const [shareStep, setShareStep] = createSignal('choose');
@@ -160,15 +161,16 @@ function Playground() {
         setStatus(`Done — ${payload.edges} edges (engine: ${payload.engine}).`);
 
         const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
-        console.dir(payload.mesh);
         doc.querySelector('ImportSimpleMeshJson').textContent = payload.mesh;
         viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
 
         setOutput(payload.logs.join('\n'));
+        setHasResult(true);
       } else if (type === 'SCRIPT_ERROR') {
         const logBlock = payload.logs.length ? payload.logs.join('\n') + '\n\n' : '';
         setStatus('Error: ' + payload.message);
         setOutput(logBlock + (payload.stack || payload.message));
+        setHasResult(false);
       }
     };
 
@@ -180,6 +182,7 @@ function Playground() {
     setStatus('Running…');
     setOutput('');
     setRunning(true);
+    setHasResult(false);
     lastMesh = null;
     worker.postMessage({
       type: 'RUN_SCRIPT',
@@ -192,6 +195,32 @@ function Playground() {
     if (!file) return;
     currentInput = { name: file.name, text: await file.text() };
     setInputName(file.name);
+  };
+
+  // lastMesh is the engine's mesh JSON as a string; pretty-print it for export.
+  const prettyMesh = () => {
+    try { return JSON.stringify(JSON.parse(lastMesh), null, 2); } catch { return lastMesh; }
+  };
+
+  const exportMesh = () => {
+    if (!lastMesh) return;
+    const blob = new Blob([prettyMesh()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mesh.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyMesh = async () => {
+    if (!lastMesh) return;
+    try {
+      await navigator.clipboard.writeText(lastMesh);
+      setStatus('Mesh copied to clipboard.');
+    } catch {
+      /* clipboard can be blocked without focus; ignore */
+    }
   };
 
   const openShare = () => {
@@ -255,6 +284,7 @@ function Playground() {
         const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
         doc.querySelector('ImportSimpleMeshJson').textContent = sk.mesh;
         viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
+        setHasResult(true);
         let edges = 0;
         try { edges = JSON.parse(sk.mesh).edges?.length ?? 0; } catch {}
         setStatus(`Loaded "${pretty}" — ${edges} edges. Press Run to recompute.`);
@@ -289,6 +319,8 @@ function Playground() {
           <span class="muted">{inputName()}</span>
           <span class="spacer" />
           <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
+          <Button variant="outlined" size="small" onClick={exportMesh} disabled={!hasResult()}>Export Mesh</Button>
+          <Button variant="outlined" size="small" onClick={copyMesh} disabled={!hasResult()}>Copy Mesh</Button>
           <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
         </div>
       </header>
