@@ -57,6 +57,76 @@ header {
 
 .icon-btn img { height: 20px; width: 20px; display: block; }
 
+.share-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-link {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  text-align: center;
+  color: var(--fg);
+}
+
+.share-words-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slug-word {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  text-align: center;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reroll-glyph {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.gallery-toggle {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.share-content {
+  min-height: 130px;
+}
+
+.share-subheader {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.copied-msg {
+  height: 18px;
+  margin-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: #2e7d32;
+}
+
 header h1 {
   font-size: 15px;
   margin: 0;

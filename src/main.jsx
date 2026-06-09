@@ -1,6 +1,13 @@
 import { render } from 'solid-js/web';
 import { createSignal, onMount, Show } from 'solid-js';
 import Button from '@suid/material/Button';
+import Dialog from '@suid/material/Dialog';
+import DialogTitle from '@suid/material/DialogTitle';
+import DialogContent from '@suid/material/DialogContent';
+import DialogActions from '@suid/material/DialogActions';
+import Checkbox from '@suid/material/Checkbox';
+import FormControlLabel from '@suid/material/FormControlLabel';
+import { generateSlugParts, slugFromParts } from './playground/slug.js';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { marked } from 'marked';
@@ -18,6 +25,14 @@ function App() {
   const [hasResult, setHasResult] = createSignal(false);
   const [running, setRunning] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
+  const [shareOpen, setShareOpen] = createSignal(false);
+  const [shareStep, setShareStep] = createSignal('choose');
+  const [parts, setParts] = createSignal({ words: [], suffix: '' });
+  const [showInGallery, setShowInGallery] = createSignal(true);
+  const [copied, setCopied] = createSignal(false);
+
+  const words = () => parts().words;
+  const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
 
   let editorEl;
   let canvasEl;
@@ -90,6 +105,34 @@ function App() {
     setStatus('Mesh copied to clipboard.');
   };
 
+  const openShare = () => {
+    setParts(generateSlugParts());
+    setShowInGallery(true);
+    setCopied(false);
+    setShareStep('choose');
+    setShareOpen(true);
+  };
+
+  const reroll = () => setParts(generateSlugParts());
+
+  // Commit the chosen slug (+ gallery flag) and reveal the link.
+  // TODO: this is where the sketch gets persisted (POST → Worker → KV),
+  // the viewer thumbnail captured → R2, and the gallery flag honored. Until
+  // that backend exists, we just advance to the (not-yet-resolving) link.
+  const commit = () => {
+    setCopied(false);
+    setShareStep('link');
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl());
+    } catch {
+      /* clipboard can be blocked in some contexts; still confirm the click */
+    }
+    setCopied(true);
+  };
+
   return (
     <>
       <header>
@@ -105,6 +148,7 @@ function App() {
           <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
           <Button variant="outlined" size="small" onClick={exportMesh} disabled={!hasResult()}>Export Mesh</Button>
           <Button variant="outlined" size="small" onClick={copyMesh} disabled={!hasResult()}>Copy Mesh</Button>
+          <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
         </div>
       </header>
       <main>
@@ -131,6 +175,53 @@ function App() {
           <pre id="output">{output()}</pre>
         </section>
       </main>
+
+      <Dialog open={shareOpen()} onClose={() => setShareOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Share</DialogTitle>
+        <DialogContent class="share-content">
+          <div class="share-subheader">
+            {shareStep() === 'choose' ? 'Choose your characters' : 'Your link is live'}
+          </div>
+          <Show when={shareStep() === 'choose'}>
+            <div class="share-words-row">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<span class="reroll-glyph">⟳</span>}
+                onClick={reroll}
+              >
+                Reroll
+              </Button>
+              <div class="slug-word">{words()[0]}</div>
+              <div class="slug-word">{words()[1]}</div>
+              <div class="slug-word">{words()[2]}</div>
+            </div>
+            <div class="gallery-toggle">
+              <FormControlLabel
+                labelPlacement="start"
+                control={<Checkbox checked={showInGallery()} onChange={(_, v) => setShowInGallery(v)} />}
+                label="Show in Gallery"
+              />
+            </div>
+          </Show>
+          <Show when={shareStep() === 'link'}>
+            <div class="share-link-row">
+              <span class="share-link">{shareUrl()}</span>
+            </div>
+            <div class="copied-msg">{copied() ? 'Link copied!' : ''}</div>
+          </Show>
+        </DialogContent>
+        <DialogActions>
+          <Show when={shareStep() === 'choose'}>
+            <Button variant="outlined" onClick={commit}>
+              {showInGallery() ? 'Publish' : 'Create link'}
+            </Button>
+          </Show>
+          <Show when={shareStep() === 'link'}>
+            <Button variant="outlined" onClick={copyLink}>Copy Link</Button>
+          </Show>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
