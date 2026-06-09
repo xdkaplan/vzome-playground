@@ -202,7 +202,7 @@ function Playground() {
     try { return JSON.stringify(JSON.parse(lastMesh), null, 2); } catch { return lastMesh; }
   };
 
-  const exportMesh = () => {
+  const download = () => {
     if (!lastMesh) return;
     const blob = new Blob([prettyMesh()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -211,16 +211,6 @@ function Playground() {
     a.download = 'mesh.json';
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const copyMesh = async () => {
-    if (!lastMesh) return;
-    try {
-      await navigator.clipboard.writeText(lastMesh);
-      setStatus('Mesh copied to clipboard.');
-    } catch {
-      /* clipboard can be blocked without focus; ignore */
-    }
   };
 
   const openShare = () => {
@@ -319,8 +309,7 @@ function Playground() {
           <span class="muted">{inputName()}</span>
           <span class="spacer" />
           <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
-          <Button variant="outlined" size="small" onClick={exportMesh} disabled={!hasResult()}>Export Mesh</Button>
-          <Button variant="outlined" size="small" onClick={copyMesh} disabled={!hasResult()}>Copy Mesh</Button>
+          <Button variant="outlined" size="small" onClick={download} disabled={!hasResult()}>Download</Button>
           <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
         </div>
       </header>
