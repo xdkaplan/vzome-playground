@@ -76,6 +76,7 @@ function Playground() {
   const [running, setRunning] = createSignal(false);
   const [hasResult, setHasResult] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
+  const [codeOpen, setCodeOpen] = createSignal(true);
   const [shareOpen, setShareOpen] = createSignal(false);
   const [shareStep, setShareStep] = createSignal('choose');
   const [parts, setParts] = createSignal({ words: [], suffix: '' });
@@ -84,6 +85,56 @@ function Playground() {
   const [title, setTitle] = createSignal(DEFAULT_TITLE);
   const [body, setBody] = createSignal(DEFAULT_BODY);
   const [editingDoc, setEditingDoc] = createSignal(false);
+  const [codeW, setCodeW] = createSignal(440); // editor pane width; viewer takes the rest
+  let restoreCodeW = 440; // width to pop back to after a drag collapses the code pane
+
+  // Drag the divider between the code editor and the viewer. Dragging the code
+  // pane below COLLAPSE_AT snaps it shut into a clickable "CODE" gutter.
+  const COLLAPSE_AT = 54;
+  const startDragCode = (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = codeW();
+    restoreCodeW = startW;
+    const main = e.currentTarget.parentElement;
+    const onMove = (ev) => {
+      const max = Math.max(200, main.clientWidth - 240);
+      const next = startW + ev.clientX - startX;
+      if (next < COLLAPSE_AT) {
+        setCodeOpen(false);
+      } else {
+        setCodeOpen(true);
+        setCodeW(Math.min(max, next));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const restoreCode = () => {
+    setCodeW(restoreCodeW);
+    setCodeOpen(true);
+    requestAnimationFrame(() => editor?.requestMeasure?.());
+  };
+
+  // Editing from a collapsed description expands it; Finish returns it to
+  // whatever fold state it was in before.
+  let docsWasCollapsed = false;
+  const startEditDoc = () => {
+    docsWasCollapsed = !docsOpen();
+    setDocsOpen(true);
+    setEditingDoc(true);
+  };
+  const finishEditDoc = () => {
+    setEditingDoc(false);
+    if (docsWasCollapsed) setDocsOpen(false);
+  };
 
   const words = () => parts().words;
   const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
@@ -272,9 +323,17 @@ function Playground() {
         </div>
       </header>
       <main>
-        <aside id="docs-pane" classList={{ collapsed: !docsOpen() }}>
-          <div class="docs-header">
-            <Show when={docsOpen()}>
+        <section
+          id="editor-pane"
+          classList={{ collapsed: !codeOpen() }}
+          style={codeOpen() ? { 'flex-basis': `${codeW()}px` } : undefined}
+        >
+          <button class="code-tab" onClick={restoreCode} title="Show code">
+            <img src="/code-icon.svg" alt="" />
+            <span class="code-tab-label">Code</span>
+          </button>
+          <aside id="docs-pane" classList={{ collapsed: !docsOpen() }}>
+            <div class="docs-header">
               <Show
                 when={editingDoc()}
                 fallback={<span class="docs-title">{title()}</span>}
@@ -289,43 +348,48 @@ function Playground() {
               <Show
                 when={editingDoc()}
                 fallback={
-                  <button class="icon-btn docs-edit-toggle" onClick={() => setEditingDoc(true)} title="Edit description">
+                  <button
+                    class="icon-btn docs-edit-toggle"
+                    onClick={startEditDoc}
+                    title="Edit description"
+                  >
                     <img src="/pencil-edit.svg" alt="Edit" />
                   </button>
                 }
               >
-                <Button variant="outlined" size="small" onClick={() => setEditingDoc(false)}>
+                <Button variant="outlined" size="small" onClick={finishEditDoc}>
                   Finish
                 </Button>
               </Show>
+              <button
+                class="icon-btn docs-collapse"
+                onClick={() => setDocsOpen((v) => !v)}
+                title={docsOpen() ? 'Hide description' : 'Show description'}
+              >
+                <img src={docsOpen() ? '/sidebar-collapse.svg' : '/sidebar-expand.svg'} alt="Toggle description" />
+              </button>
+            </div>
+            <Show when={docsOpen()}>
+              <Show
+                when={editingDoc()}
+                fallback={<div class="docs-body">{body()}</div>}
+              >
+                <textarea
+                  class="docs-edit"
+                  value={body()}
+                  maxlength={MAX_BODY}
+                  placeholder="Describe your sketch…"
+                  onInput={(e) => setBody(e.currentTarget.value)}
+                />
+                <div class="docs-charcount">{body().length} / {MAX_BODY}</div>
+              </Show>
             </Show>
-            <button
-              class="icon-btn docs-collapse"
-              onClick={() => setDocsOpen((v) => !v)}
-              title={docsOpen() ? 'Hide docs' : 'Show docs'}
-            >
-              <img src={docsOpen() ? '/sidebar-collapse.svg' : '/sidebar-expand.svg'} alt="Toggle docs" />
-            </button>
-          </div>
-          <Show when={docsOpen()}>
-            <Show
-              when={editingDoc()}
-              fallback={<div class="docs-body">{body()}</div>}
-            >
-              <textarea
-                class="docs-edit"
-                value={body()}
-                maxlength={MAX_BODY}
-                placeholder="Describe your sketch…"
-                onInput={(e) => setBody(e.currentTarget.value)}
-              />
-              <div class="docs-charcount">{body().length} / {MAX_BODY}</div>
-            </Show>
-          </Show>
-        </aside>
-        <section id="editor-pane">
+          </aside>
           <div id="editor" ref={editorEl} />
         </section>
+        <Show when={codeOpen()}>
+          <div class="pane-divider" onPointerDown={startDragCode} title="Drag to resize" />
+        </Show>
         <section id="output-pane">
           <div id="status" class="muted">{status()}</div>
           <vzome-viewer id="viewer" preview={false}> </vzome-viewer>

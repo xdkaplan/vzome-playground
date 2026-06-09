@@ -57,8 +57,8 @@ header {
 
 .icon-btn img { height: 20px; width: 20px; display: block; object-fit: contain; }
 
-/* sidebar fold/grow toggle: 10% larger */
-.icon-btn.docs-collapse img { height: 22px; width: 22px; }
+/* fold/grow toggle: 10% larger, rotated 90° (vertical collapse) */
+.icon-btn.docs-collapse img { height: 22px; width: 22px; transform: rotate(90deg); }
 
 /* description edit pencil: 10% smaller */
 .icon-btn.docs-edit-toggle img { height: 18px; width: 18px; }
@@ -232,11 +232,12 @@ main {
   min-height: 0;
 }
 
+/* docs sits on top of the editor; collapses up to just the title bar */
 #docs-pane {
-  flex: 0 0 305px;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
-  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   background: var(--panel);
   font-size: 13px;
   line-height: 1.5;
@@ -244,15 +245,23 @@ main {
   flex-direction: column;
 }
 
-#docs-pane.collapsed { flex-basis: 44px; }
+/* draggable gutter between the code editor and the viewer */
+.pane-divider {
+  flex: 0 0 8px;
+  cursor: col-resize;
+  background: var(--border);
+  touch-action: none;
+}
+
+.pane-divider:hover { background: var(--accent); }
 
 .docs-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px;
-  min-height: 47px; /* fits the tallest control (Finish btn) so edit toggle doesn't jitter the row */
+  padding: 2px 8px;
+  min-height: 35px; /* fits the tallest control (Finish btn) so edit toggle doesn't jitter the row */
 }
 
 .docs-title {
@@ -280,6 +289,7 @@ main {
 
 .docs-body {
   overflow: auto;
+  max-height: 200px;
   padding: 4px 16px 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -294,8 +304,7 @@ main {
 }
 
 .docs-edit {
-  flex: 1;
-  min-height: 0;
+  height: 160px;
   box-sizing: border-box;
   resize: none;
   margin: 0 16px 4px;
@@ -321,16 +330,50 @@ main {
 #docs-pane blockquote { margin: 12px 0; padding: 6px 12px; border-left: 3px solid var(--accent); color: var(--muted); }
 #docs-pane strong { color: var(--fg); }
 
-#editor-pane, #output-pane {
+#output-pane {
   flex: 1;
   min-width: 0;
 }
 
 #editor-pane {
+  flex: 0 0 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
 }
+
+/* tucked-away code pane: a thin vertical "CODE" gutter, click to restore */
+#editor-pane.collapsed { flex: 0 0 36px; }
+#editor-pane.collapsed #editor,
+#editor-pane.collapsed #docs-pane { display: none; }
+
+.code-tab { display: none; }
+
+#editor-pane.collapsed .code-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  background: var(--panel);
+  border: none;
+  padding: 0;
+}
+
+#editor-pane.collapsed .code-tab img { width: 20px; height: 20px; }
+
+.code-tab-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+
+#editor-pane.collapsed .code-tab:hover { background: rgba(0, 0, 0, 0.04); }
 
 #editor {
   flex: 1;
