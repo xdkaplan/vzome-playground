@@ -60,6 +60,9 @@ header {
 /* sidebar fold/grow toggle: 10% larger */
 .icon-btn.docs-collapse img { height: 22px; width: 22px; }
 
+/* description edit pencil: 10% smaller */
+.icon-btn.docs-edit-toggle img { height: 18px; width: 18px; }
+
 .share-link-row {
   display: flex;
   align-items: center;
@@ -249,6 +252,7 @@ main {
   align-items: center;
   gap: 4px;
   padding: 8px;
+  min-height: 47px; /* fits the tallest control (Finish btn) so edit toggle doesn't jitter the row */
 }
 
 .docs-title {
@@ -274,38 +278,40 @@ main {
   padding: 2px 6px;
 }
 
-.docs-wysiwyg {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* Crepe's "frame" theme uses big document-page padding (60px 120px) that
-   collapses to ~nothing in our narrow sidebar — shrink it so text uses the
-   full width. !important to beat crepe's dynamically-injected stylesheet. */
-.docs-wysiwyg .ProseMirror {
-  padding: 12px 16px !important;
-}
-
 .docs-body {
   overflow: auto;
   padding: 4px 16px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.docs-charcount {
+  flex: 0 0 auto;
+  padding: 4px 16px 8px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .docs-edit {
   flex: 1;
   min-height: 0;
-  width: 100%;
   box-sizing: border-box;
   resize: none;
-  border: none;
-  outline: none;
-  padding: 4px 16px 12px;
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
+  margin: 0 16px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
   line-height: 1.5;
-  background: var(--panel);
+  background: #fff;
   color: var(--fg);
+}
+
+.docs-edit:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 #docs-pane h1 { font-size: 16px; color: var(--accent); margin: 0 0 12px; }

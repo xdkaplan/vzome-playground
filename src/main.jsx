@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
+import { createSignal, onMount, Show, For } from 'solid-js';
 import Button from '@suid/material/Button';
 import Dialog from '@suid/material/Dialog';
 import DialogTitle from '@suid/material/DialogTitle';
@@ -11,7 +11,6 @@ import { generateSlugParts, slugFromParts } from './playground/slug.js';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { apiCompletions } from './playground/api-completions.js';
-import { marked } from 'marked';
 
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
 import DEFAULT_DESCRIPTION from './docs/default-description.md?raw';
@@ -67,37 +66,8 @@ function composeDescription(title, body) {
 const DEFAULT_TITLE = titleFromDescription(DEFAULT_DESCRIPTION);
 const DEFAULT_BODY = bodyFromDescription(DEFAULT_DESCRIPTION);
 
-// Lazy-loaded Milkdown WYSIWYG editor for the description body. Only authors who
-// open the editor pay its weight; viewers and the gallery see rendered markdown.
-function DescriptionEditor(props) {
-  let root;
-  let crepe = null;
-  onMount(async () => {
-    try {
-      const mod = await import('@milkdown/crepe');
-      await import('@milkdown/crepe/theme/common/style.css');
-      await import('@milkdown/crepe/theme/frame.css');
-      crepe = new mod.Crepe({
-        root,
-        defaultValue: props.value,
-        features: { [mod.Crepe.Feature.BlockEdit]: false },
-      });
-      await crepe.create();
-      props.onReady?.(() => crepe.getMarkdown());
-    } catch (e) {
-      console.error('Milkdown failed to load:', e);
-      props.onFail?.();
-    }
-  });
-  onCleanup(() => {
-    if (crepe) {
-      try { props.onChange?.(crepe.getMarkdown()); } catch {}
-      try { crepe.destroy(); } catch {}
-      crepe = null;
-    }
-  });
-  return <div class="docs-wysiwyg" ref={root} />;
-}
+// Max length for the plain-text description body.
+const MAX_BODY = 1500;
 
 function Playground() {
   const [status, setStatus] = createSignal('Ready.');
@@ -114,17 +84,6 @@ function Playground() {
   const [title, setTitle] = createSignal(DEFAULT_TITLE);
   const [body, setBody] = createSignal(DEFAULT_BODY);
   const [editingDoc, setEditingDoc] = createSignal(false);
-  const [wysiwygFailed, setWysiwygFailed] = createSignal(false);
-  let getLiveBody = null; // set by the WYSIWYG editor; returns its current markdown
-
-  // Body markdown right now (live from the editor if it's open, else the signal).
-  const currentBody = () => {
-    try {
-      return editingDoc() && getLiveBody ? getLiveBody() : body();
-    } catch {
-      return body();
-    }
-  };
 
   const words = () => parts().words;
   const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
@@ -236,7 +195,7 @@ function Playground() {
         body: JSON.stringify({
           slug: slugFromParts(parts()),
           code: editor.state.doc.toString(),
-          description: composeDescription(title(), currentBody()),
+          description: composeDescription(title(), body()),
           title: title(),
           input: currentInput,
           mesh: lastMesh,
@@ -265,7 +224,6 @@ function Playground() {
       setTitle(titleFromDescription(desc) || pretty);
       setBody(bodyFromDescription(desc));
       setEditingDoc(false);
-      setWysiwygFailed(false);
       document.title = (titleFromDescription(desc) || pretty) + ' — vZome Playground';
       currentInput = sk.input ?? null;
       if (sk.input?.name) setInputName(sk.input.name);
@@ -331,7 +289,7 @@ function Playground() {
               <Show
                 when={editingDoc()}
                 fallback={
-                  <button class="icon-btn" onClick={() => setEditingDoc(true)} title="Edit description">
+                  <button class="icon-btn docs-edit-toggle" onClick={() => setEditingDoc(true)} title="Edit description">
                     <img src="/pencil-edit.svg" alt="Edit" />
                   </button>
                 }
@@ -352,25 +310,16 @@ function Playground() {
           <Show when={docsOpen()}>
             <Show
               when={editingDoc()}
-              fallback={<div class="docs-body" innerHTML={marked.parse(body())} />}
+              fallback={<div class="docs-body">{body()}</div>}
             >
-              <Show
-                when={!wysiwygFailed()}
-                fallback={
-                  <textarea
-                    class="docs-edit"
-                    value={body()}
-                    onInput={(e) => setBody(e.currentTarget.value)}
-                  />
-                }
-              >
-                <DescriptionEditor
-                  value={body()}
-                  onChange={setBody}
-                  onReady={(fn) => (getLiveBody = fn)}
-                  onFail={() => setWysiwygFailed(true)}
-                />
-              </Show>
+              <textarea
+                class="docs-edit"
+                value={body()}
+                maxlength={MAX_BODY}
+                placeholder="Describe your sketch…"
+                onInput={(e) => setBody(e.currentTarget.value)}
+              />
+              <div class="docs-charcount">{body().length} / {MAX_BODY}</div>
             </Show>
           </Show>
         </aside>
