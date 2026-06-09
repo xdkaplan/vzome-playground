@@ -36,15 +36,17 @@ export default {
       // Immutable: refuse to overwrite an existing slug.
       if (await env.SKETCHES.get(slug)) return json({ error: 'slug exists' }, 409);
 
+      const title = (body.title || '').slice(0, 100);
       const record = {
         code,
+        description: body.description ?? '',
         input: body.input ?? null,
         mesh: body.mesh ?? null,
         public: !!body.public,
         created: Date.now(),
       };
       await env.SKETCHES.put(slug, JSON.stringify(record), {
-        metadata: { public: record.public, created: record.created },
+        metadata: { public: record.public, created: record.created, title },
       });
       return json({ ok: true, slug });
     }
@@ -63,7 +65,7 @@ export default {
       const items = list.keys
         .filter((k) => k.metadata && k.metadata.public)
         .sort((a, b) => (b.metadata.created || 0) - (a.metadata.created || 0))
-        .map((k) => ({ slug: k.name, created: k.metadata.created }));
+        .map((k) => ({ slug: k.name, created: k.metadata.created, title: k.metadata.title || '' }));
       return json({ items });
     }
 

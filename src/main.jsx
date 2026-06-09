@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, onMount, Show, For } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
 import Button from '@suid/material/Button';
 import Dialog from '@suid/material/Dialog';
 import DialogTitle from '@suid/material/DialogTitle';
@@ -13,14 +13,18 @@ import { javascript } from '@codemirror/lang-javascript';
 import { marked } from 'marked';
 
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
-import DOC_MD from './docs/triangles.md?raw';
+import DEFAULT_DESCRIPTION from './docs/default-description.md?raw';
 const TEMPLATE_VZOME = '/template.vZome';
 
 import 'https://www.vzome.com/modules/vzome-viewer.js';
 
 import './style.css';
 
-const DOC_HTML = marked.parse(DOC_MD);
+// The first markdown heading in a description becomes the sketch's title.
+function titleFromDescription(md) {
+  const m = (md || '').match(/^\s*#{1,6}\s+(.+?)\s*$/m);
+  return m ? m[1].trim() : '';
+}
 
 const xmlToDataUrl = (xml) => {
   const base64 = btoa(unescape(encodeURIComponent(xml)));
@@ -41,6 +45,59 @@ function prettySlug(slug) {
   return [...words, suffix.toUpperCase()].join(' ');
 }
 
+// A description = a title (first markdown heading) + a body (the rest). We edit
+// them separately (title in the header, body in the WYSIWYG) and recombine to
+// one markdown string for storage.
+function bodyFromDescription(md) {
+  const lines = (md || '').split('\n');
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === '') i++;
+  if (i < lines.length && /^#{1,6}\s+/.test(lines[i].trim())) i++; // drop heading
+  while (i < lines.length && lines[i].trim() === '') i++;
+  return lines.slice(i).join('\n');
+}
+
+function composeDescription(title, body) {
+  const t = (title || '').trim();
+  const b = (body || '').trim();
+  return (t ? `# ${t}\n\n` : '') + b;
+}
+
+const DEFAULT_TITLE = titleFromDescription(DEFAULT_DESCRIPTION);
+const DEFAULT_BODY = bodyFromDescription(DEFAULT_DESCRIPTION);
+
+// Lazy-loaded Milkdown WYSIWYG editor for the description body. Only authors who
+// open the editor pay its weight; viewers and the gallery see rendered markdown.
+function DescriptionEditor(props) {
+  let root;
+  let crepe = null;
+  onMount(async () => {
+    try {
+      const mod = await import('@milkdown/crepe');
+      await import('@milkdown/crepe/theme/common/style.css');
+      await import('@milkdown/crepe/theme/frame.css');
+      crepe = new mod.Crepe({
+        root,
+        defaultValue: props.value,
+        features: { [mod.Crepe.Feature.BlockEdit]: false },
+      });
+      await crepe.create();
+      props.onReady?.(() => crepe.getMarkdown());
+    } catch (e) {
+      console.error('Milkdown failed to load:', e);
+      props.onFail?.();
+    }
+  });
+  onCleanup(() => {
+    if (crepe) {
+      try { props.onChange?.(crepe.getMarkdown()); } catch {}
+      try { crepe.destroy(); } catch {}
+      crepe = null;
+    }
+  });
+  return <div class="docs-wysiwyg" ref={root} />;
+}
+
 function Playground() {
   const [status, setStatus] = createSignal('Ready.');
   const [output, setOutput] = createSignal('');
@@ -53,6 +110,20 @@ function Playground() {
   const [parts, setParts] = createSignal({ words: [], suffix: '' });
   const [showInGallery, setShowInGallery] = createSignal(true);
   const [copied, setCopied] = createSignal(false);
+  const [title, setTitle] = createSignal(DEFAULT_TITLE);
+  const [body, setBody] = createSignal(DEFAULT_BODY);
+  const [editingDoc, setEditingDoc] = createSignal(false);
+  const [wysiwygFailed, setWysiwygFailed] = createSignal(false);
+  let getLiveBody = null; // set by the WYSIWYG editor; returns its current markdown
+
+  // Body markdown right now (live from the editor if it's open, else the signal).
+  const currentBody = () => {
+    try {
+      return editingDoc() && getLiveBody ? getLiveBody() : body();
+    } catch {
+      return body();
+    }
+  };
 
   const words = () => parts().words;
   const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
@@ -166,6 +237,8 @@ function Playground() {
         body: JSON.stringify({
           slug: slugFromParts(parts()),
           code: editor.state.doc.toString(),
+          description: composeDescription(title(), currentBody()),
+          title: title(),
           input: currentInput,
           mesh: lastMesh,
           public: showInGallery(),
@@ -189,13 +262,23 @@ function Playground() {
       }
       const sk = await res.json();
       editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: sk.code } });
+      const desc = sk.description || DEFAULT_DESCRIPTION;
+      setTitle(titleFromDescription(desc) || pretty);
+      setBody(bodyFromDescription(desc));
+      setEditingDoc(false);
+      setWysiwygFailed(false);
+      document.title = (titleFromDescription(desc) || pretty) + ' — vZome Playground';
       currentInput = sk.input ?? null;
       if (sk.input?.name) setInputName(sk.input.name);
       if (sk.mesh) {
         lastMesh = sk.mesh;
-        viewer.render(sk.mesh);
+        const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
+        doc.querySelector('ImportSimpleMeshJson').textContent = sk.mesh;
+        viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
         setHasResult(true);
-        setStatus(`Loaded "${pretty}" — ${sk.mesh.edges?.length ?? 0} edges. Press Run to recompute.`);
+        let edges = 0;
+        try { edges = JSON.parse(sk.mesh).edges?.length ?? 0; } catch {}
+        setStatus(`Loaded "${pretty}" — ${edges} edges. Press Run to recompute.`);
       } else {
         setStatus(`Loaded "${pretty}". Press Run.`);
       }
@@ -236,8 +319,33 @@ function Playground() {
       <main>
         <aside id="docs-pane" classList={{ collapsed: !docsOpen() }}>
           <div class="docs-header">
+            <Show when={docsOpen()}>
+              <Show
+                when={editingDoc()}
+                fallback={<span class="docs-title">{title()}</span>}
+              >
+                <input
+                  class="docs-title-input"
+                  value={title()}
+                  placeholder="Title"
+                  onInput={(e) => setTitle(e.currentTarget.value)}
+                />
+              </Show>
+              <Show
+                when={editingDoc()}
+                fallback={
+                  <button class="icon-btn" onClick={() => setEditingDoc(true)} title="Edit description">
+                    <img src="/pencil-edit.svg" alt="Edit" />
+                  </button>
+                }
+              >
+                <Button variant="outlined" size="small" onClick={() => setEditingDoc(false)}>
+                  Finish
+                </Button>
+              </Show>
+            </Show>
             <button
-              class="icon-btn"
+              class="icon-btn docs-collapse"
               onClick={() => setDocsOpen((v) => !v)}
               title={docsOpen() ? 'Hide docs' : 'Show docs'}
             >
@@ -245,7 +353,28 @@ function Playground() {
             </button>
           </div>
           <Show when={docsOpen()}>
-            <div class="docs-body" innerHTML={DOC_HTML} />
+            <Show
+              when={editingDoc()}
+              fallback={<div class="docs-body" innerHTML={marked.parse(body())} />}
+            >
+              <Show
+                when={!wysiwygFailed()}
+                fallback={
+                  <textarea
+                    class="docs-edit"
+                    value={body()}
+                    onInput={(e) => setBody(e.currentTarget.value)}
+                  />
+                }
+              >
+                <DescriptionEditor
+                  value={body()}
+                  onChange={setBody}
+                  onReady={(fn) => (getLiveBody = fn)}
+                  onFail={() => setWysiwygFailed(true)}
+                />
+              </Show>
+            </Show>
           </Show>
         </aside>
         <section id="editor-pane">
@@ -346,7 +475,8 @@ function Gallery() {
                 {(it) => (
                   <a class="gallery-card" href={`/s/${it.slug}`}>
                     <img class="gallery-hash" src={hashUrl(it.slug)} alt="" loading="lazy" />
-                    <span class="gallery-card-name">{prettySlug(it.slug)}</span>
+                    <span class="gallery-card-title">{it.title || prettySlug(it.slug)}</span>
+                    <span class="gallery-card-sub">{prettySlug(it.slug)}</span>
                   </a>
                 )}
               </For>

@@ -55,7 +55,10 @@ header {
 
 .icon-btn:hover { background: rgba(0, 0, 0, 0.06); }
 
-.icon-btn img { height: 20px; width: 20px; display: block; }
+.icon-btn img { height: 20px; width: 20px; display: block; object-fit: contain; }
+
+/* sidebar fold/grow toggle: 10% larger */
+.icon-btn.docs-collapse img { height: 22px; width: 22px; }
 
 .share-link-row {
   display: flex;
@@ -187,12 +190,19 @@ header h1 {
   display: block;
 }
 
-.gallery-card-name {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
+.gallery-card-title {
+  font-size: 13px;
+  font-weight: 600;
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.25;
   word-break: break-word;
+}
+
+.gallery-card-sub {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .toolbar {
@@ -212,7 +222,7 @@ main {
 }
 
 #docs-pane {
-  flex: 0 0 280px;
+  flex: 0 0 305px;
   min-width: 0;
   overflow: hidden;
   border-right: 1px solid var(--border);
@@ -228,13 +238,66 @@ main {
 .docs-header {
   flex: 0 0 auto;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
   padding: 8px;
+}
+
+.docs-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.docs-wysiwyg {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Crepe's "frame" theme uses big document-page padding (60px 120px) that
+   collapses to ~nothing in our narrow sidebar — shrink it so text uses the
+   full width. !important to beat crepe's dynamically-injected stylesheet. */
+.docs-wysiwyg .ProseMirror {
+  padding: 12px 16px !important;
 }
 
 .docs-body {
   overflow: auto;
   padding: 4px 16px 12px;
+}
+
+.docs-edit {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 4px 16px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--panel);
+  color: var(--fg);
 }
 
 #docs-pane h1 { font-size: 16px; color: var(--accent); margin: 0 0 12px; }
