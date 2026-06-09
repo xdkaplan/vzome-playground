@@ -7,9 +7,7 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
-# Sketch storage. Create the namespace once with:
-#   wrangler kv namespace create SKETCHES
-# then paste the returned id below (and remove this comment).
+# Sketch storage (KV namespace "SKETCHES").
 [[kv_namespaces]]
 binding = "SKETCHES"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "e664729a3a1c4c5699fa361c62cad248"
