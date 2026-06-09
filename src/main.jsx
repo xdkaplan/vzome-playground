@@ -67,6 +67,9 @@ function App() {
         setHasResult(false);
       }
     };
+
+    const shared = location.pathname.match(/^\/s\/(.+)$/);
+    if (shared) loadSketch(decodeURIComponent(shared[1]));
   });
 
   const run = () => {
@@ -119,9 +122,49 @@ function App() {
   // TODO: this is where the sketch gets persisted (POST → Worker → KV),
   // the viewer thumbnail captured → R2, and the gallery flag honored. Until
   // that backend exists, we just advance to the (not-yet-resolving) link.
-  const commit = () => {
+  const commit = async () => {
     setCopied(false);
-    setShareStep('link');
+    try {
+      const res = await fetch('/api/sketch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slug: slugFromParts(parts()),
+          code: editor.state.doc.toString(),
+          input: currentInput,
+          mesh: lastMesh,
+          public: showInGallery(),
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setShareStep('link');
+    } catch (e) {
+      setStatus('Publish failed: ' + e.message + ' (backend running?)');
+    }
+  };
+
+  const loadSketch = async (slug) => {
+    try {
+      const res = await fetch('/api/sketch/' + encodeURIComponent(slug));
+      if (!res.ok) {
+        setStatus('Sketch not found: ' + slug);
+        return;
+      }
+      const sk = await res.json();
+      editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: sk.code } });
+      currentInput = sk.input ?? null;
+      if (sk.input?.name) setInputName(sk.input.name);
+      if (sk.mesh) {
+        lastMesh = sk.mesh;
+        viewer.render(sk.mesh);
+        setHasResult(true);
+        setStatus(`Loaded "${slug}" — ${sk.mesh.edges?.length ?? 0} edges. Press Run to recompute.`);
+      } else {
+        setStatus(`Loaded "${slug}". Press Run.`);
+      }
+    } catch (e) {
+      setStatus('Load error: ' + e.message);
+    }
   };
 
   const copyLink = async () => {

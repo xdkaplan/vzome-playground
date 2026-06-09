@@ -1,7 +1,15 @@
 name = "vzome-playground"
 compatibility_date = "2026-06-01"
+main = "worker/index.js"
 
-# Static, client-only SPA — no Worker script, just served assets.
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+
+# Sketch storage. Create the namespace once with:
+#   wrangler kv namespace create SKETCHES
+# then paste the returned id below (and remove this comment).
+[[kv_namespaces]]
+binding = "SKETCHES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
