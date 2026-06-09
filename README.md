@@ -31,7 +31,6 @@ src/playground/
   runner.js    scope-injects the magic API
   facade.js    the magic API surface
   engine.js    geometry — toy placeholder + seam for the real vZome engine
-  viewer.js    three.js wireframe viewer
 ```
 
 The engine is a toy placeholder; the real vZome golden-field engine swaps in at

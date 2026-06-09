@@ -16,8 +16,7 @@
     "@suid/material": "^0.12.2",
     "codemirror": "^6.0.1",
     "marked": "^14.1.2",
-    "solid-js": "^1.9.10",
-    "three": "^0.184.0"
+    "solid-js": "^1.9.10"
   },
   "devDependencies": {
     "vite": "^5.4.10",
