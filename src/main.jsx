@@ -10,6 +10,7 @@ import FormControlLabel from '@suid/material/FormControlLabel';
 import { generateSlugParts, slugFromParts } from './playground/slug.js';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
+import { apiCompletions } from './playground/api-completions.js';
 import { marked } from 'marked';
 
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
@@ -142,7 +143,7 @@ function Playground() {
   onMount(async () => {
     editor = new EditorView({
       doc: DEFAULT_SCRIPT,
-      extensions: [basicSetup, javascript()],
+      extensions: [basicSetup, javascript(), apiCompletions],
       parent: editorEl,
     });
     viewer = document.querySelector('vzome-viewer');
