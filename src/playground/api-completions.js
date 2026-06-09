@@ -1,17 +1,6 @@
-// Autocomplete for the one custom, permanent piece of the playground "magic
-// API": `out`, our output collector (the emit-geometry contract, from
-// facade.js). It's the only injected name that is genuinely ours AND stable
-// regardless of how vZome's real API evolves.
-//
-// Everything else the runner injects is either standard JS (console) or the
-// real vZome surface (field, symmetry, origin, input); those completions
-// should come from the actual types once this lives in the vzome repo, not
-// hand-listed here.
-//
-// CodeMirror's JS mode only completes keywords and locally-declared
-// identifiers, so `out` is invisible without this. It's registered as extra JS
-// language data so it MERGES with the built-in local-scope completions rather
-// than replacing them.
+// Autocomplete for `out`, the playground's custom emit-geometry contract.
+// Registered as extra JS language data so it merges with CodeMirror's built-in
+// completions. The real vZome surface gets type-derived completions later.
 
 import { snippetCompletion as snip } from '@codemirror/autocomplete';
 import { javascriptLanguage } from '@codemirror/lang-javascript';
