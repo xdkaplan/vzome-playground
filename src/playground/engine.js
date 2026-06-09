@@ -97,6 +97,7 @@ export async function createEngine()
   return initialize() .then( api => {
     console.log('vZome API loaded:', api);
     const gField = api .getField( 'golden' );
+    const scaleFactor = gField .createPower( 4, 1 );
     const icosahedralGroup = api .getSymmetry( 'golden', 'icosahedral' );
     return {
       name: 'vZome golden field',
@@ -127,19 +128,23 @@ export async function createEngine()
         };
       },
       buildMesh(struts) {
-        const vertices = [];
+        const vertexArray = [];
         const index = new Map();
         const vid = (v) => {
           const k = v.toString();
           if (!index.has(k)) {
-            index.set(k, vertices.length);
-            const { x, y, z } = v .toRealVector();
-            vertices.push([x, y, z]);
+            index.set(k, vertexArray.length);
+            vertexArray.push( v .scale( scaleFactor ) );
           }
           return index.get(k);
         };
         const edges = struts.map(([a, b]) => [vid(a), vid(b)]);
-        return { field: 'toy', vertices, edges, faces: [] };
+        const vertices = vertexArray .map( vertex => {
+          const xyzANs = vertex .getComponents();
+          // toTD returns an array of strings, and we want actual BigInts
+          return xyzANs .map( an => an.toTrailingDivisor() .map( str => BigInt( str ) ) );
+        } );
+        return { field: 'golden', vertices, edges, faces: [] };
       },
     };
   } );

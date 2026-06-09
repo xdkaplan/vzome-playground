@@ -17,9 +17,10 @@ self.onmessage = async (e) => {
   try {
     const engine = await enginePromise;
     const mesh = runScript(payload.code, engine, payload.input, (line) => logs.push(line));
+    const meshText = JSON.stringify(mesh);
     self.postMessage({
       type: 'SCRIPT_RESULT',
-      payload: { mesh, engine: engine.name, edges: mesh.edges?.length ?? 0, logs },
+      payload: { mesh: meshText, engine: engine.name, edges: mesh.edges?.length ?? 0, logs },
     });
   } catch (err) {
     self.postMessage({

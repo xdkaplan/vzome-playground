@@ -11,12 +11,21 @@ import { generateSlugParts, slugFromParts } from './playground/slug.js';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { marked } from 'marked';
+
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
 import DOC_MD from './docs/triangles.md?raw';
-import { createViewer } from './playground/viewer.js';
+const TEMPLATE_VZOME = '/template.vZome';
+
+import 'https://www.vzome.com/modules/vzome-viewer.js';
+
 import './style.css';
 
 const DOC_HTML = marked.parse(DOC_MD);
+
+const xmlToDataUrl = (xml) => {
+  const base64 = btoa(unescape(encodeURIComponent(xml)));
+  return `data:application/xml;base64,${base64}`;
+};
 
 // Deterministic "visual hash" per sketch — a cheeky DiceBear avatar seeded by
 // the slug. Swap the style for 'thumbs', 'fun-emoji', 'shapes', 'rings', etc.
@@ -56,14 +65,21 @@ function Playground() {
   let worker;
   let currentInput = null;
   let lastMesh = null;
+  let templateXml = null;
+  let templateDataUrl = null;
 
-  onMount(() => {
+  onMount(async () => {
     editor = new EditorView({
       doc: DEFAULT_SCRIPT,
       extensions: [basicSetup, javascript()],
       parent: editorEl,
     });
-    viewer = createViewer(canvasEl);
+    viewer = document.querySelector('vzome-viewer');
+
+    templateXml = await (await fetch('/template.vZome')).text();
+    templateDataUrl = xmlToDataUrl(templateXml);
+    viewer.src = templateDataUrl;
+
     worker = new Worker(new URL('./playground/worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const { type, payload } = e.data;
@@ -71,7 +87,12 @@ function Playground() {
       if (type === 'SCRIPT_RESULT') {
         lastMesh = payload.mesh;
         setStatus(`Done — ${payload.edges} edges (engine: ${payload.engine}).`);
-        viewer.render(payload.mesh);
+
+        const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
+        console.dir(payload.mesh);
+        doc.querySelector('ImportSimpleMeshJson').textContent = payload.mesh;
+        viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
+
         setOutput(payload.logs.join('\n'));
         setHasResult(true);
       } else if (type === 'SCRIPT_ERROR') {
@@ -232,7 +253,7 @@ function Playground() {
         </section>
         <section id="output-pane">
           <div id="status" class="muted">{status()}</div>
-          <canvas id="viewer" ref={canvasEl} />
+          <vzome-viewer id="viewer" preview={false}> </vzome-viewer>
           <pre id="output">{output()}</pre>
         </section>
       </main>
