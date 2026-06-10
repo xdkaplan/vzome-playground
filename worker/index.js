@@ -14,6 +14,8 @@
 // — loading a sketch restores the code and the viewer renders only after Run.
 // Immutable: slugs never change.
 
+const MAX_CODE = 256 * 1024; // 256 KiB cap on a stored script
+
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -60,6 +62,12 @@ export default {
       }
       const { slug, code } = body;
       if (!slug || !code) return json({ error: 'slug and code required' }, 400);
+
+      // Cap the script size: generous for a real sketch, but well under KV's
+      // 25 MiB value limit and the Worker CPU budget for parsing the payload.
+      if (typeof code !== 'string' || code.length > MAX_CODE) {
+        return json({ error: 'code too large' }, 413);
+      }
 
       // Immutable: refuse to overwrite an existing slug.
       if (await env.SKETCHES.get(slug)) return json({ error: 'slug exists' }, 409);

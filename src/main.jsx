@@ -432,6 +432,7 @@ function Playground() {
           image,
         }),
       });
+      if (res.status === 413) { setNotice('Your script is longer than the server allows.'); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setShareStep('link');
     } catch (e) {
