@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show, For, createEffect, on } from 'solid-js';
 import Button from '@suid/material/Button';
 import Dialog from '@suid/material/Dialog';
 import DialogTitle from '@suid/material/DialogTitle';
@@ -15,6 +15,7 @@ import { apiCompletions } from './playground/api-completions.js';
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
 import DEFAULT_DESCRIPTION from './docs/default-description.md?raw';
 import DEMO_GALLERY from './data/demo-gallery.json';
+import { createAuroraGridGL } from './aurora.js';
 const TEMPLATE_VZOME = '/template.vZome';
 
 import 'https://www.vzome.com/modules/vzome-viewer.js';
@@ -702,6 +703,43 @@ function Gallery() {
 
   onMount(() => loadPage(1));
 
+  // --- aurora glass behind each thumbnail --------------------------------
+  // One shared WebGL2 context drives all 16 cards (16-context limit). Cards
+  // with a real og image cover the aurora; image-less cards show it as a live,
+  // CIELAB-locked #8CC2E7 placeholder that blooms on hover.
+  let auroraCanvases = [];
+  let aurora;
+  const AURORA = {
+    hover: {
+      duration: 0.4,
+      from: { blobStrength: 0.03, hueSpread: 0.30 }, // rest: near-flat #8CC2E7
+      to: { blobStrength: 0.40, hueSpread: 2.40 },   // hover: bloom
+      breath: { rate: 0.31, amount: { blobStrength: 0.10, hueSpread: 0.53 } }, // 1/3 between the calm original and the exaggerated test values
+    },
+  };
+  // rebuild the shared controller on every page (items() changes on paginate)
+  createEffect(on(items, (list) => {
+    aurora?.stop();
+    aurora = undefined;
+    if (!list?.length) return;
+    queueMicrotask(() => {                          // let the new refs settle
+      const cs = auroraCanvases.slice(0, list.length);
+      if (cs.some((c) => !c)) return;
+      try {
+        // No hover on touch, so the resting state is all mobile users see — lift
+        // the resting blobStrength and chroma spread so tiles bloom by default.
+        const mobile = window.matchMedia('(max-width: 767px)').matches;
+        const opts = mobile
+          ? { ...AURORA, hover: { ...AURORA.hover, from: { ...AURORA.hover.from, blobStrength: 0.10, hueSpread: AURORA.hover.from.hueSpread * 1.4 } } }
+          : AURORA;
+        aurora = createAuroraGridGL(cs, list.map((_, i) => ({ seed: i + 1, time: i * 1.37 })), opts);
+      } catch {                                      // no WebGL2 → flat baby blue
+        cs.forEach((c) => { const x = c.getContext('2d'); x.fillStyle = '#8CC2E7'; x.fillRect(0, 0, c.width, c.height); });
+      }
+    });
+  }));
+  onCleanup(() => aurora?.stop());
+
   return (
     <>
       <header>
@@ -724,15 +762,24 @@ function Gallery() {
           >
             <div class="gallery-grid">
               <For each={items()}>
-                {(it) => (
-                  <a class="gallery-card" href={`/s/${it.slug}`} title={prettySlug(it.slug)}>
-                    <img
-                      class="gallery-thumb"
-                      src={it.thumb || `/og/${it.slug}.png`}
-                      alt=""
-                      loading="lazy"
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
+                {(it, i) => (
+                  <a
+                    class="gallery-card"
+                    href={`/s/${it.slug}`}
+                    title={prettySlug(it.slug)}
+                    onMouseEnter={() => aurora?.setHover(i(), true)}
+                    onMouseLeave={() => aurora?.setHover(i(), false)}
+                  >
+                    <div class="gallery-thumb">
+                      <canvas class="aurora-bg" width="256" height="256" ref={(el) => (auroraCanvases[i()] = el)} />
+                      <img
+                        class="aurora-fg"
+                        src={it.thumb || `/og/${it.slug}.png`}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                      />
+                    </div>
                     <span class="gallery-tag">{truncate(it.title || prettySlug(it.slug), GALLERY_TITLE_MAX)}</span>
                   </a>
                 )}

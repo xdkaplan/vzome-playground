@@ -232,10 +232,23 @@ header h1 {
   transition: opacity 0.3s ease, height 0.4s ease;
 }
 
-/* the thumbnail fills the square; cover-cropping the 1200x630 card shows its model */
+/* the thumb fills the square and layers the aurora canvas under the og image */
 .gallery-thumb {
+  position: absolute;
+  inset: 0;
+  background: #8CC2E7; /* shown until the aurora paints / if WebGL2 is missing */
+}
+
+.gallery-thumb .aurora-bg,
+.gallery-thumb .aurora-fg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* the real card image covers the aurora when present; cover-crops the 1200x630 */
+.aurora-fg {
   object-fit: cover;
   display: block;
 }
@@ -297,6 +310,31 @@ header h1 {
 }
 
 .pager-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* mobile: keep a strict 4-wide grid, width-filled but capped by height so the
+   square 4×4 stays one pane; the grid+pager group is vertically centered in the
+   space under the header. Title text is smaller with a lighter stroke to suit
+   the small tiles. */
+@media (max-width: 767px) {
+  .gallery-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: safe center; /* center grid+pager in the space under the header; top-align + scroll if too tall */
+    overflow: auto;
+  }
+  .gallery-grid {
+    /* fill width on narrow phones, but cap by height so the square 4×4 never
+       spills past one pane on wider/landscape mobile */
+    width: min(100%, calc(100vh - 168px));
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .gallery-pager { margin-top: 20px; }
+  .gallery-tag {
+    font-size: 11.8px; /* 15.75 × 0.75 */
+    padding: 0 6px; /* more room on the small tiles so centered text reads centered */
+    -webkit-text-stroke-width: 2px; /* lighter stroke so small glyphs don't bloat */
+  }
+}
 
 .toolbar {
   display: flex;
