@@ -171,10 +171,13 @@ header h1 {
 
 .create-link:hover { text-decoration: underline; }
 
+/* the gallery is one non-scrolling pane: grid at top, pager pinned at the bottom */
 .gallery-main {
+  display: flex; /* column so the grid and pager stack; pager gets margin-top:auto */
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden; /* a page is sized to fit — never scroll */
   padding: 16px;
 }
 
@@ -184,62 +187,116 @@ header h1 {
   padding: 8px;
 }
 
+/* 4×4 grid of square cards (ref aurora-grid.html). The cards are square, so the
+   grid is square at a full page; cap its width by the available height so a full
+   4×4 page fits the viewport without scrolling. */
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  max-width: 880px;
+  gap: 14px;
+  width: min(860px, calc(100vh - 168px));
   margin: 0 auto;
 }
 
 .gallery-card {
+  position: relative;
   aspect-ratio: 1 / 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel);
-  text-decoration: none;
-  color: var(--fg);
+  background: #8CC2E7; /* shown if a sketch has no card image yet */
   overflow: hidden;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
 }
 
 .gallery-card:hover { border-color: var(--accent); }
 
-.gallery-thumb {
-  width: 72%;
-  aspect-ratio: 1 / 1;
-  overflow: hidden;
-  border-radius: 6px;
-  background: #8CC2E7; /* shown if a sketch has no card image yet */
+/* hover affordance + helps the title read: light scrim over the bottom of the tile */
+.gallery-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 31%;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.6s ease, height 0.6s ease;
+  pointer-events: none;
+  z-index: 1;
 }
 
-/* the card is 1200x630; cover-cropping a square shows its central model square */
-.gallery-thumb img {
+.gallery-card:hover::after {
+  opacity: 1;
+  height: 39%;
+  transition: opacity 0.3s ease, height 0.4s ease;
+}
+
+/* the thumbnail fills the square; cover-cropping the 1200x630 card shows its model */
+.gallery-thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.gallery-card-title {
-  font-size: 13px;
-  font-weight: 600;
+/* title overlaid on the bottom of the square, white stroke under the fill so it
+   stays legible over any thumbnail */
+.gallery-tag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
   text-align: center;
-  line-height: 1.25;
-  word-break: break-word;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #000;
+  -webkit-text-stroke: 3px rgba(255, 255, 255, 0.3);
+  paint-order: stroke fill;
+  pointer-events: none;
+  z-index: 2;
+  display: -webkit-box; /* clamp to two lines on the small square cards */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
-.gallery-card-sub {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
+/* numbered page controls, centered and pinned to the bottom of the pane */
+.gallery-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px auto 0; /* margin-top:auto pushes the row to the bottom */
+  margin-top: auto;
+  max-width: 880px;
 }
+
+.pager-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pager-btn:hover:not(:disabled):not(.active) { border-color: var(--accent); color: var(--accent); }
+
+.pager-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  cursor: default;
+}
+
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
 
 .toolbar {
   display: flex;
@@ -319,16 +376,33 @@ main {
   white-space: nowrap;
 }
 
-.docs-title-input {
+.docs-title-field {
   flex: 1;
   min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+.docs-title-input {
+  width: 100%;
+  box-sizing: border-box;
   font-size: 16px;
   font-weight: 600;
   font-family: inherit;
   color: var(--accent);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 2px 44px 2px 6px; /* room for the char counter */
+}
+
+.docs-title-count {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--muted);
+  pointer-events: none;
 }
 
 .docs-body {

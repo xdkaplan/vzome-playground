@@ -109,14 +109,31 @@ export default {
       return json(JSON.parse(value));
     }
 
-    // --- Gallery list (public only, newest first) ---------------------------
+    // --- Gallery list (public only, newest first, paged) --------------------
     if (pathname === '/api/gallery' && request.method === 'GET') {
-      const list = await env.SKETCHES.list();
-      const items = list.keys
+      // Page through all keys (list() caps at 1000). The og:<slug> image keys
+      // have no metadata, so the public filter drops them automatically.
+      // Newest-first sorting needs every key in hand, so we read them all and
+      // then return just the requested page (?page, ?limit).
+      const keys = [];
+      let cursor;
+      do {
+        const res = await env.SKETCHES.list({ cursor });
+        keys.push(...res.keys);
+        cursor = res.list_complete ? null : res.cursor;
+      } while (cursor);
+      const all = keys
         .filter((k) => k.metadata && k.metadata.public)
-        .sort((a, b) => (b.metadata.created || 0) - (a.metadata.created || 0))
+        .sort((a, b) => (b.metadata.created || 0) - (a.metadata.created || 0));
+
+      const total = all.length;
+      const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 21));
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const page = Math.min(totalPages, Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1));
+      const items = all
+        .slice((page - 1) * pageSize, page * pageSize)
         .map((k) => ({ slug: k.name, created: k.metadata.created, title: k.metadata.title || '' }));
-      return json({ items });
+      return json({ items, page, pageSize, total, totalPages });
     }
 
     // --- Shared sketch page: SPA shell + injected OG/Twitter card meta ------

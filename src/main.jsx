@@ -14,6 +14,7 @@ import { apiCompletions } from './playground/api-completions.js';
 
 import DEFAULT_SCRIPT from './defaultScript.js?raw';
 import DEFAULT_DESCRIPTION from './docs/default-description.md?raw';
+import DEMO_GALLERY from './data/demo-gallery.json';
 const TEMPLATE_VZOME = '/template.vZome';
 
 import 'https://www.vzome.com/modules/vzome-viewer.js';
@@ -38,6 +39,15 @@ function prettySlug(slug) {
   const words = parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1));
   return [...words, suffix.toUpperCase()].join(' ');
 }
+
+// Hard cap on the sketch name at input time, and the (shorter) cap at which
+// gallery cards truncate the title for display — both Fibonacci.
+const TITLE_MAX = 55;
+const GALLERY_TITLE_MAX = 34;
+const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+
+// Gallery shows one numbered page at a time: a 4×4 grid of square cards.
+const GALLERY_PAGE_SIZE = 16;
 
 // A description = a title (first markdown heading) + a body (the rest). We edit
 // them separately (title in the header, body in the WYSIWYG) and recombine to
@@ -148,11 +158,13 @@ function Playground() {
     if (mobile()) {
       setCodeOpen(false); // mobile flip: showing 3D hides code into its gutter
     } else if (mainEl) {
-      // ensure the viewer has room, else the resize below would re-collapse it
+      // shrink code so the viewer has room; otherwise the next ResizeObserver
+      // tick (reflow) would immediately auto-collapse the 3D pane again.
       const maxCode = mainEl.clientWidth - DIVIDER_W - VIEW_COLLAPSE_AT;
       if (codeW() > maxCode) setCodeW(Math.max(COLLAPSE_AT, maxCode));
     }
     viewAutoCollapsed = false;
+    // nudge the vzome-viewer to re-measure its canvas (does NOT drive reflow).
     requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
   };
 
@@ -446,6 +458,7 @@ function Playground() {
       if (sk.input?.name) setInputName(sk.input.name);
       setHasResult(false); // fresh sketch — show the idle prompt over the canvas until Run
       setErrored(false);
+      setRunning(false); // defensive: don't leave the overlay stuck if a run was in flight
     } catch (e) {
       setNotice('Load error: ' + e.message);
     }
@@ -514,12 +527,16 @@ function Playground() {
                 when={editingDoc()}
                 fallback={<span class="docs-title">{title()}</span>}
               >
-                <input
-                  class="docs-title-input"
-                  value={title()}
-                  placeholder="Title"
-                  onInput={(e) => setTitle(e.currentTarget.value)}
-                />
+                <div class="docs-title-field">
+                  <input
+                    class="docs-title-input"
+                    value={title()}
+                    placeholder="Title"
+                    maxlength={TITLE_MAX}
+                    onInput={(e) => setTitle(e.currentTarget.value)}
+                  />
+                  <span class="docs-title-count">{title().length}/{TITLE_MAX}</span>
+                </div>
               </Show>
               <Show
                 when={editingDoc()}
@@ -651,16 +668,39 @@ function Playground() {
 
 function Gallery() {
   const [items, setItems] = createSignal(null); // null = loading
+  const [page, setPage] = createSignal(1);
+  const [totalPages, setTotalPages] = createSignal(1);
 
-  onMount(async () => {
+  // Fetch one numbered page. The worker sorts newest-first and returns a slice
+  // plus totalPages; in vite dev (no worker) we slice the Demo-Gallery locally.
+  const loadPage = async (p) => {
     try {
-      const res = await fetch('/api/gallery');
+      const res = await fetch(`/api/gallery?page=${p}&limit=${GALLERY_PAGE_SIZE}`);
       const data = await res.json();
       setItems(data.items || []);
+      setTotalPages(data.totalPages || 1);
+      setPage(data.page || p);
     } catch {
+      if (import.meta.env.DEV) {
+        const start = (p - 1) * GALLERY_PAGE_SIZE;
+        setItems(DEMO_GALLERY.slice(start, start + GALLERY_PAGE_SIZE));
+        setTotalPages(Math.max(1, Math.ceil(DEMO_GALLERY.length / GALLERY_PAGE_SIZE)));
+        setPage(p);
+        return;
+      }
       setItems([]);
+      setTotalPages(1);
     }
-  });
+  };
+
+  const goTo = (p) => {
+    if (p < 1 || p > totalPages() || p === page()) return;
+    setItems(null); // show loading while the next page arrives
+    loadPage(p);
+    window.scrollTo({ top: 0 });
+  };
+
+  onMount(() => loadPage(1));
 
   return (
     <>
@@ -685,21 +725,51 @@ function Gallery() {
             <div class="gallery-grid">
               <For each={items()}>
                 {(it) => (
-                  <a class="gallery-card" href={`/s/${it.slug}`}>
-                    <div class="gallery-thumb">
-                      <img
-                        src={`/og/${it.slug}.png`}
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => (e.currentTarget.style.display = 'none')}
-                      />
-                    </div>
-                    <span class="gallery-card-title">{it.title || prettySlug(it.slug)}</span>
-                    <span class="gallery-card-sub">{prettySlug(it.slug)}</span>
+                  <a class="gallery-card" href={`/s/${it.slug}`} title={prettySlug(it.slug)}>
+                    <img
+                      class="gallery-thumb"
+                      src={it.thumb || `/og/${it.slug}.png`}
+                      alt=""
+                      loading="lazy"
+                      onError={(e) => (e.currentTarget.style.display = 'none')}
+                    />
+                    <span class="gallery-tag">{truncate(it.title || prettySlug(it.slug), GALLERY_TITLE_MAX)}</span>
                   </a>
                 )}
               </For>
             </div>
+            <Show when={totalPages() > 1}>
+              <nav class="gallery-pager" aria-label="Gallery pages">
+                <button
+                  class="pager-btn"
+                  disabled={page() <= 1}
+                  onClick={() => goTo(page() - 1)}
+                  aria-label="Previous page"
+                >
+                  ‹
+                </button>
+                <For each={Array.from({ length: totalPages() }, (_, i) => i + 1)}>
+                  {(p) => (
+                    <button
+                      class="pager-btn"
+                      classList={{ active: p === page() }}
+                      aria-current={p === page() ? 'page' : undefined}
+                      onClick={() => goTo(p)}
+                    >
+                      {p}
+                    </button>
+                  )}
+                </For>
+                <button
+                  class="pager-btn"
+                  disabled={page() >= totalPages()}
+                  onClick={() => goTo(page() + 1)}
+                  aria-label="Next page"
+                >
+                  ›
+                </button>
+              </nav>
+            </Show>
           </Show>
         </Show>
       </main>
