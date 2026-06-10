@@ -187,9 +187,9 @@ header h1 {
   padding: 8px;
 }
 
-/* 4×4 grid of square cards (ref aurora-grid.html). The cards are square, so the
-   grid is square at a full page; cap its width by the available height so a full
-   4×4 page fits the viewport without scrolling. */
+/* 4×4 grid of square cards. The cards are square, so the grid is square at a
+   full page; cap its width by the available height so a full 4×4 page fits the
+   viewport without scrolling. */
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
