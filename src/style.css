@@ -247,10 +247,12 @@ header h1 {
   height: 100%;
 }
 
-/* the real card image covers the aurora when present; cover-crops the 1200x630 */
+/* the real card image sits over the aurora; multiply lets the living aurora show
+   through the flat #8CC2E7 padding (also tints the model) */
 .aurora-fg {
   object-fit: cover;
   display: block;
+  mix-blend-mode: multiply;
 }
 
 /* title overlaid on the bottom of the square, white stroke under the fill so it

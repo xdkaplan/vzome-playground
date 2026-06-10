@@ -704,12 +704,13 @@ function Gallery() {
   onMount(() => loadPage(1));
 
   // --- aurora glass behind each thumbnail --------------------------------
-  // One shared WebGL2 context drives all 16 cards (16-context limit). Cards
-  // with a real og image cover the aurora; image-less cards show it as a live,
-  // CIELAB-locked #8CC2E7 placeholder that blooms on hover.
+  // One shared WebGL2 context drives all 16 cards (16-context limit). The og
+  // image multiplies over the aurora; locking the aurora mean to white keeps the
+  // model/padding true and lets only the living variations tint through.
   let auroraCanvases = [];
   let aurora;
   const AURORA = {
+    targetColor: '#ffffff', // CIELAB mean locked to white (works with multiply blend)
     hover: {
       duration: 0.4,
       from: { blobStrength: 0.03, hueSpread: 0.30 }, // rest: near-flat #8CC2E7
