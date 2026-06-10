@@ -369,55 +369,67 @@ export function createAuroraGridGL(canvases, optsList = [], baseOpts = {}) {
   let raf = 0, running = false, last = 0, clock = 0;
   const cap = () => baseOpts.maxFps || DEFAULTS.maxFps;
 
-  function renderAll(dt) {
-    clock += dt;
-    for (const t of tiles) {
-      if (hover) {
-        const tw = t.tween;
-        let changed = false;
-        if (tw.active) {
-          tw.t = hoverDur > 0 ? Math.min(1, tw.t + dt / hoverDur) : 1;
-          t.h = lerp(tw.from, tw.to, easeOutQuad(tw.t)); // square ease-out, both directions
-          if (tw.t >= 1) tw.active = false;
-          changed = true;
-        }
-        // Recompute every frame while bloomed so the breath keeps animating.
-        if (changed || t.h > 0) {
-          const phase = breath ? Math.sin((clock + t.breathOffset) * TAU * breath.rate) : 0;
-          for (const key in hover.to) {
-            let v = lerp(hover.from[key], hover.to[key], t.h);
-            if (breath && breath.amount[key]) v += phase * breath.amount[key] * t.h;
-            t.state.o[key] = v;
-          }
+  // A tile only needs animating while it's hovered or tweening back to rest; an
+  // idle grid (every tile at rest) costs nothing. Without a hover config the
+  // whole grid always animates (the old behavior).
+  const tileActive = (t) => !hover || (t.tween && t.tween.active) || t.h > 0;
+
+  function drawTile(t, dt) {
+    if (hover) {
+      const tw = t.tween;
+      if (tw && tw.active) {
+        tw.t = hoverDur > 0 ? Math.min(1, tw.t + dt / hoverDur) : 1;
+        t.h = lerp(tw.from, tw.to, easeOutQuad(tw.t)); // square ease-out, both directions
+        if (tw.t >= 1) tw.active = false;
+      }
+      // Recompute while bloomed so the breath keeps animating.
+      if (t.h > 0 || (tw && tw.active)) {
+        const phase = breath ? Math.sin((clock + t.breathOffset) * TAU * breath.rate) : 0;
+        for (const key in hover.to) {
+          let v = lerp(hover.from[key], hover.to[key], t.h);
+          if (breath && breath.amount[key]) v += phase * breath.amount[key] * t.h;
+          t.state.o[key] = v;
         }
       }
-      t.state.time += dt * t.state.o.speed;
-      draw(R, RES, t.state, t.state.time);
-      const c = t.ctx.canvas;
-      t.ctx.drawImage(glCanvas, 0, 0, RES, RES, 0, 0, c.width, c.height);
     }
+    t.state.time += dt * t.state.o.speed;
+    draw(R, RES, t.state, t.state.time);
+    const c = t.ctx.canvas;
+    t.ctx.drawImage(glCanvas, 0, 0, RES, RES, 0, 0, c.width, c.height);
   }
+
+  // all=true paints every tile (initial paint / setOptions); otherwise only the
+  // tiles currently animating, so the resting grid is free.
+  function renderAll(dt, all) {
+    clock += dt;
+    for (const t of tiles) if (all || tileActive(t)) drawTile(t, dt);
+  }
+  const anyActive = () => tiles.some(tileActive);
+
   function frame(now) {
     if (!running) return;
-    raf = requestAnimationFrame(frame);
     const fps = cap();
-    if (last && fps > 0 && now - last < 1000 / fps) return;
+    if (last && fps > 0 && now - last < 1000 / fps) { raf = requestAnimationFrame(frame); return; }
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
     last = now;
-    renderAll(dt);
+    renderAll(dt, false);
+    if (!anyActive()) { stop(); return; } // nothing left to animate → idle the loop
+    raf = requestAnimationFrame(frame);
   }
   function start() { if (!running) { running = true; last = 0; raf = requestAnimationFrame(frame); } }
   function stop() { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
-  function setOptions(p) { for (const t of tiles) applyOptions(t.state, p); renderAll(0); }
+  function setOptions(p) { for (const t of tiles) applyOptions(t.state, p); renderAll(0, true); }
   // Re-base the tween on the CURRENT value toward rest/hover, so a direction
-  // change mid-flight still eases out from where it is.
+  // change mid-flight still eases out from where it is. Wake the loop; it idles
+  // itself again once the tween settles back to rest.
   function setHover(index, hovered) {
     const t = tiles[index];
     if (!t || !hover) return;
     t.tween = { active: true, t: 0, from: t.h, to: hovered ? 1 : 0 };
+    start();
   }
 
-  renderAll(0); // immediate first frame so tiles aren't blank
+  renderAll(0, true); // paint every tile once, then stay idle until a hover
 
   // Self-test: if the shader compiled but produced a blank frame (a logic bug),
   // throw so the caller can degrade gracefully instead of showing black.
@@ -425,6 +437,6 @@ export function createAuroraGridGL(canvases, optsList = [], baseOpts = {}) {
   R.gl.readPixels(RES >> 1, RES >> 1, 1, 1, R.gl.RGBA, R.gl.UNSIGNED_BYTE, probe);
   if (probe[0] + probe[1] + probe[2] < 8) throw new Error('aurora produced a blank frame');
 
-  start();
+  // No start() here: the grid renders once and idles; setHover wakes the loop.
   return { start, stop, setOptions, setHover };
 }

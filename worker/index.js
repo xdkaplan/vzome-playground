@@ -97,6 +97,9 @@ export default {
         headers: {
           'content-type': 'image/png',
           'cache-control': 'public, max-age=31536000, immutable',
+          // allow the gallery to read pixels (chroma-key the bg to alpha) even
+          // when the card is loaded cross-origin (e.g. dev against prod images)
+          'access-control-allow-origin': '*',
         },
       });
     }
