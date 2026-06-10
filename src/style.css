@@ -142,6 +142,12 @@ header {
   color: #2e7d32;
 }
 
+.share-error {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #b3261e;
+}
+
 header h1 {
   font-size: 15px;
   margin: 0;
@@ -204,9 +210,19 @@ header h1 {
 
 .gallery-card:hover { border-color: var(--accent); }
 
-.gallery-hash {
-  width: 62%;
+.gallery-thumb {
+  width: 72%;
   aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #8CC2E7; /* shown if a sketch has no card image yet */
+}
+
+/* the card is 1200x630; cover-cropping a square shows its central model square */
+.gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 
@@ -380,8 +396,7 @@ main {
 #editor-pane.collapsed #docs-pane { display: none; }
 
 #output-pane.collapsed { flex: 0 0 36px; }
-#output-pane.collapsed #status,
-#output-pane.collapsed #viewer,
+#output-pane.collapsed .viewer-wrap,
 #output-pane.collapsed #output { display: none; }
 
 .code-tab, .view-tab { display: none; }
@@ -426,19 +441,48 @@ main {
   background: var(--panel);
 }
 
-#status {
-  padding: 8px 12px;
+/* wraps the viewer so the canvas overlay can position against it */
+.viewer-wrap {
+  position: relative;
+  flex: 2;
+  min-height: 0;
+  display: flex;
+  flex-direction: column; /* so #viewer (flex:1) fills the height like its old flex:2 */
   border-bottom: 1px solid var(--border);
 }
 
 #viewer {
-  flex: 2;
+  flex: 1;
   min-height: 0;
   width: 100%;
   display: block;
-  background: rgb(149, 194, 231);
-  border-bottom: 1px solid var(--border);
+  background: #8CC2E7;
 }
+
+/* floats over the canvas: idle prompt, "Running…", or "Run Failed" */
+.canvas-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* let the user orbit the model underneath */
+  padding: 16px;
+}
+
+.canvas-overlay-card {
+  text-align: center;
+  padding: 14px 22px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.canvas-overlay-card.error { color: #b3261e; }
 
 #output {
   flex: 1;

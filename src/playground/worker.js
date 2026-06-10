@@ -1,13 +1,18 @@
-// The execution worker: keeps script execution (and, later, the heavy vZome
-// engine) off the main thread. Protocol:
+// The execution worker: keeps script execution (and the heavy vZome engine,
+// which loads asynchronously) off the main thread. Protocol:
 //   in:  { type: 'RUN_SCRIPT', payload: { code, input } }
-//   out: { type: 'SCRIPT_RESULT', payload: { mesh, engine, edges, logs } }
+//   out: { type: 'ENGINE_READY' }                                   once loaded
+//        { type: 'SCRIPT_RESULT', payload: { mesh, engine, edges, logs } }
 //        { type: 'SCRIPT_ERROR',  payload: { message, stack, logs } }
 
 import { createEngine } from './engine.js';
 import { runScript } from './runner.js';
 
 const enginePromise = createEngine();
+// Tell the main thread when the engine has finished loading so it can show a
+// "Loading vZome…" state for a Run that's waiting on it. (Load failures surface
+// via SCRIPT_ERROR when a run awaits the rejected promise.)
+enginePromise.then(() => self.postMessage({ type: 'ENGINE_READY' }), () => {});
 
 self.onmessage = async (e) => {
   const { type, payload } = e.data;

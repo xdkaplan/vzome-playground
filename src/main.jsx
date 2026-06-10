@@ -31,12 +31,6 @@ const xmlToDataUrl = (xml) => {
   return `data:application/xml;base64,${base64}`;
 };
 
-// Deterministic "visual hash" per sketch — a cheeky DiceBear avatar seeded by
-// the slug. Swap the style for 'thumbs', 'fun-emoji', 'shapes', 'rings', etc.
-const HASH_STYLE = 'miniavs';
-const hashUrl = (slug) =>
-  `https://api.dicebear.com/9.x/${HASH_STYLE}/svg?seed=${encodeURIComponent(slug)}`;
-
 // "stott-cantor-euler-r41be" -> "Stott Cantor Euler R41BE"
 function prettySlug(slug) {
   const parts = slug.split('-');
@@ -70,10 +64,12 @@ const DEFAULT_BODY = bodyFromDescription(DEFAULT_DESCRIPTION);
 const MAX_BODY = 610;
 
 function Playground() {
-  const [status, setStatus] = createSignal('Ready.');
+  const [errored, setErrored] = createSignal(false); // last run threw — drives the canvas overlay
+  const [notice, setNotice] = createSignal(null); // OK-modal message (shared-link load failures)
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
   const [running, setRunning] = createSignal(false);
+  const [engineReady, setEngineReady] = createSignal(false); // vZome engine finished loading in the worker
   const [hasResult, setHasResult] = createSignal(false);
   const [docsOpen, setDocsOpen] = createSignal(true);
   const [codeOpen, setCodeOpen] = createSignal(true);
@@ -83,6 +79,7 @@ function Playground() {
   let viewAutoCollapsed = false; // true when the window (not a drag) collapsed the 3D pane
   const [shareOpen, setShareOpen] = createSignal(false);
   const [shareStep, setShareStep] = createSignal('choose');
+  const [shareError, setShareError] = createSignal(null); // inline publish failure in the Share dialog
   const [parts, setParts] = createSignal({ words: [], suffix: '' });
   const [showInGallery, setShowInGallery] = createSignal(true);
   const [copied, setCopied] = createSignal(false);
@@ -212,6 +209,14 @@ function Playground() {
   const words = () => parts().words;
   const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
 
+  // The message floated over the canvas; null once a result renders (overlay hidden).
+  const overlayState = () => {
+    if (hasResult()) return null;
+    if (running()) return engineReady() ? 'running' : 'loading';
+    if (errored()) return 'error';
+    return 'idle';
+  };
+
   let editorEl;
   let canvasEl;
   let fileInput;
@@ -248,22 +253,25 @@ function Playground() {
     worker = new Worker(new URL('./playground/worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const { type, payload } = e.data;
+      if (type === 'ENGINE_READY') { setEngineReady(true); return; }
       setRunning(false);
       if (type === 'SCRIPT_RESULT') {
         lastMesh = payload.mesh;
-        setStatus(`Done — ${payload.edges} edges (engine: ${payload.engine}).`);
 
         const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
         doc.querySelector('ImportSimpleMeshJson').textContent = payload.mesh;
         viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
 
-        setOutput(payload.logs.join('\n'));
+        // The success readout used to live in the status bar; now it tails the console.
+        const done = `Done — ${payload.edges} edges (engine: ${payload.engine}).`;
+        setOutput([...payload.logs, done].join('\n'));
         setHasResult(true);
+        setErrored(false);
       } else if (type === 'SCRIPT_ERROR') {
         const logBlock = payload.logs.length ? payload.logs.join('\n') + '\n\n' : '';
-        setStatus('Error: ' + payload.message);
         setOutput(logBlock + (payload.stack || payload.message));
         setHasResult(false);
+        setErrored(true);
       }
     };
 
@@ -273,10 +281,10 @@ function Playground() {
 
   const run = () => {
     if (!worker) return; // worker is created in onMount; ignore clicks before it's ready
-    setStatus('Running…');
     setOutput('');
     setRunning(true);
     setHasResult(false);
+    setErrored(false);
     lastMesh = null;
     worker.postMessage({
       type: 'RUN_SCRIPT',
@@ -318,23 +326,86 @@ function Playground() {
     URL.revokeObjectURL(url);
   };
 
+  // Capture the viewer and composite it onto a 1200x630 OG card: the model is
+  // contain-fit and centered, with the rest filled in the viewer's own blue so
+  // the padding is seamless. Returns base64 PNG (no data: prefix) or null.
+  const VIEWER_BG = '#8CC2E7'; // matches the vzome-viewer's rendered background
+  const captureThumbnail = async () => {
+    try {
+      const bmp = await createImageBitmap(await viewer.captureImage());
+
+      // The viewer frames the model small in a sea of blue, so crop to the
+      // model's bounding box (pixels differing from the corner/background)
+      // before fitting — otherwise the card looks zoomed out.
+      const scratch = document.createElement('canvas');
+      scratch.width = bmp.width;
+      scratch.height = bmp.height;
+      const sctx = scratch.getContext('2d');
+      sctx.drawImage(bmp, 0, 0);
+      const { data } = sctx.getImageData(0, 0, bmp.width, bmp.height);
+      const bg = [data[0], data[1], data[2]];
+      let minX = bmp.width, minY = bmp.height, maxX = -1, maxY = -1;
+      for (let y = 0; y < bmp.height; y++) {
+        for (let x = 0; x < bmp.width; x++) {
+          const i = (y * bmp.width + x) * 4;
+          const diff = Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]);
+          if (diff > 40) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      let sx = 0, sy = 0, sw = bmp.width, sh = bmp.height;
+      if (maxX >= minX && maxY >= minY) {
+        const pad = Math.round(Math.max(maxX - minX, maxY - minY) * 0.07);
+        sx = Math.max(0, minX - pad);
+        sy = Math.max(0, minY - pad);
+        sw = Math.min(bmp.width - sx, maxX - minX + 1 + 2 * pad);
+        sh = Math.min(bmp.height - sy, maxY - minY + 1 + 2 * pad);
+      }
+
+      const W = 1200, H = 630, SQ = 630;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = VIEWER_BG;
+      ctx.fillRect(0, 0, W, H);
+      const scale = Math.min(SQ / sw, SQ / sh);
+      const dw = sw * scale, dh = sh * scale;
+      ctx.drawImage(bmp, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      const dataUrl = await new Promise((res) => {
+        const r = new FileReader();
+        r.onloadend = () => res(String(r.result));
+        r.readAsDataURL(blob);
+      });
+      return dataUrl.split(',')[1] || null; // strip "data:image/png;base64,"
+    } catch {
+      return null;
+    }
+  };
+
   const openShare = () => {
     setParts(generateSlugParts());
     setShowInGallery(true);
     setCopied(false);
+    setShareError(null);
     setShareStep('choose');
     setShareOpen(true);
   };
 
   const reroll = () => setParts(generateSlugParts());
 
-  // Commit the chosen slug (+ gallery flag) and reveal the link.
-  // TODO: this is where the sketch gets persisted (POST → Worker → KV),
-  // the viewer thumbnail captured → R2, and the gallery flag honored. Until
-  // that backend exists, we just advance to the (not-yet-resolving) link.
+  // Persist the sketch (code + description + input) and reveal the link.
+  // The mesh is not stored — loading a sketch requires pressing Run.
   const commit = async () => {
     setCopied(false);
+    setShareError(null);
     try {
+      const image = hasResult() ? await captureThumbnail() : null;
       const res = await fetch('/api/sketch', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -344,14 +415,14 @@ function Playground() {
           description: composeDescription(title(), body()),
           title: title(),
           input: currentInput,
-          mesh: lastMesh,
           public: showInGallery(),
+          image,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setShareStep('link');
     } catch (e) {
-      setStatus('Publish failed: ' + e.message + ' (backend running?)');
+      setShareError('Publish failed: ' + e.message + ' (backend running?)');
     }
   };
 
@@ -361,7 +432,7 @@ function Playground() {
     try {
       const res = await fetch('/api/sketch/' + encodeURIComponent(key));
       if (!res.ok) {
-        setStatus(`Sketch not found: "${pretty}"`);
+        setNotice(`Sketch not found: "${pretty}"`);
         return;
       }
       const sk = await res.json();
@@ -373,20 +444,10 @@ function Playground() {
       document.title = (titleFromDescription(desc) || pretty) + ' — vZome Playground';
       currentInput = sk.input ?? null;
       if (sk.input?.name) setInputName(sk.input.name);
-      if (sk.mesh) {
-        lastMesh = sk.mesh;
-        const doc = new DOMParser().parseFromString(templateXml, 'application/xml');
-        doc.querySelector('ImportSimpleMeshJson').textContent = sk.mesh;
-        viewer.src = xmlToDataUrl(new XMLSerializer().serializeToString(doc));
-        setHasResult(true);
-        let edges = 0;
-        try { edges = JSON.parse(sk.mesh).edges?.length ?? 0; } catch {}
-        setStatus(`Loaded "${pretty}" — ${edges} edges. Press Run to recompute.`);
-      } else {
-        setStatus(`Loaded "${pretty}". Press Run.`);
-      }
+      setHasResult(false); // fresh sketch — show the idle prompt over the canvas until Run
+      setErrored(false);
     } catch (e) {
-      setStatus('Load error: ' + e.message);
+      setNotice('Load error: ' + e.message);
     }
   };
 
@@ -510,8 +571,19 @@ function Playground() {
             <img src="/3d-cube.svg" alt="" />
             <span class="view-tab-label">3D</span>
           </button>
-          <div id="status" class="muted">{status()}</div>
-          <vzome-viewer id="viewer" preview={false}> </vzome-viewer>
+          <div class="viewer-wrap">
+            <vzome-viewer id="viewer" preview={false}> </vzome-viewer>
+            <Show when={overlayState()}>
+              <div class="canvas-overlay">
+                <div class="canvas-overlay-card" classList={{ error: overlayState() === 'error' }}>
+                  {overlayState() === 'loading' ? 'Loading vZome…'
+                    : overlayState() === 'running' ? 'Running…'
+                    : overlayState() === 'error' ? 'Run Failed'
+                    : <>Nothing to see here.<br />Press RUN.</>}
+                </div>
+              </div>
+            </Show>
+          </div>
           <pre id="output">{output()}</pre>
         </section>
       </main>
@@ -551,6 +623,9 @@ function Playground() {
             </div>
             <div class="copied-msg">{copied() ? 'Link copied!' : ''}</div>
           </Show>
+          <Show when={shareError()}>
+            <div class="share-error">{shareError()}</div>
+          </Show>
         </DialogContent>
         <DialogActions>
           <Show when={shareStep() === 'choose'}>
@@ -561,6 +636,13 @@ function Playground() {
           <Show when={shareStep() === 'link'}>
             <Button variant="outlined" onClick={copyLink}>Copy Link</Button>
           </Show>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={notice() !== null} onClose={() => setNotice(null)} maxWidth="xs">
+        <DialogContent>{notice()}</DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => setNotice(null)}>OK</Button>
         </DialogActions>
       </Dialog>
     </>
@@ -604,7 +686,14 @@ function Gallery() {
               <For each={items()}>
                 {(it) => (
                   <a class="gallery-card" href={`/s/${it.slug}`}>
-                    <img class="gallery-hash" src={hashUrl(it.slug)} alt="" loading="lazy" />
+                    <div class="gallery-thumb">
+                      <img
+                        src={`/og/${it.slug}.png`}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                      />
+                    </div>
                     <span class="gallery-card-title">{it.title || prettySlug(it.slug)}</span>
                     <span class="gallery-card-sub">{prettySlug(it.slug)}</span>
                   </a>
