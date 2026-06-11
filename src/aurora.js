@@ -418,6 +418,9 @@ export function createAuroraGridGL(canvases, optsList = [], baseOpts = {}) {
   }
   function start() { if (!running) { running = true; last = 0; raf = requestAnimationFrame(frame); } }
   function stop() { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
+  // Release the WebGL2 context (browsers cap live contexts ~16); call on teardown,
+  // not on idle. The tiles' 2D canvases keep their last painted frame.
+  function destroy() { stop(); R.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
   function setOptions(p) { for (const t of tiles) applyOptions(t.state, p); renderAll(0, true); }
   // Re-base the tween on the CURRENT value toward rest/hover, so a direction
   // change mid-flight still eases out from where it is. Wake the loop; it idles
@@ -438,5 +441,5 @@ export function createAuroraGridGL(canvases, optsList = [], baseOpts = {}) {
   if (probe[0] + probe[1] + probe[2] < 8) throw new Error('aurora produced a blank frame');
 
   // No start() here: the grid renders once and idles; setHover wakes the loop.
-  return { start, stop, setOptions, setHover };
+  return { start, stop, setOptions, setHover, destroy };
 }

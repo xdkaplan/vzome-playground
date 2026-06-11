@@ -48,7 +48,7 @@ const prettySlug = (slug) =>
     .join(' ') || slug;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
 
@@ -93,6 +93,17 @@ export default {
         } catch { /* ignore a malformed image */ }
       }
 
+      // A new public sketch lands on gallery page 1 — drop the cached gallery
+      // pages so it shows up immediately (rather than waiting out the max-age).
+      if (record.public) {
+        const g = `${url.origin}/api/gallery`;
+        ctx.waitUntil(Promise.all([
+          caches.default.delete(`${g}?page=1&limit=16`), // the app's page 1
+          caches.default.delete(`${g}?page=1&limit=21`), // the worker default
+          caches.default.delete(g),
+        ]).catch(() => {}));
+      }
+
       return json({ ok: true, slug });
     }
 
@@ -122,6 +133,12 @@ export default {
 
     // --- Gallery list (public only, newest first, paged) --------------------
     if (pathname === '/api/gallery' && request.method === 'GET') {
+      // The list scan below is O(total sketches); cache the rendered page at the
+      // edge so repeated loads don't re-scan KV. Stale up to max-age after a publish.
+      const cache = caches.default;
+      const hit = await cache.match(request);
+      if (hit) return hit;
+
       // Page through all keys (list() caps at 1000). The og:<slug> image keys
       // have no metadata, so the public filter drops them automatically.
       // Newest-first sorting needs every key in hand, so we read them all and
@@ -144,7 +161,10 @@ export default {
       const items = all
         .slice((page - 1) * pageSize, page * pageSize)
         .map((k) => ({ slug: k.name, created: k.metadata.created, title: k.metadata.title || '' }));
-      return json({ items, page, pageSize, total, totalPages });
+      const res = json({ items, page, pageSize, total, totalPages });
+      res.headers.set('cache-control', 'public, max-age=30');
+      ctx.waitUntil(cache.put(request, res.clone()));
+      return res;
     }
 
     // --- Shared sketch page: SPA shell + injected OG/Twitter card meta ------

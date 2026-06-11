@@ -372,7 +372,6 @@ header h1 {
 
 /* mobile toolbar: circular play (Run) — the SVG is the full circle + triangle */
 .play-fab {
-  order: 1; /* sit to the right of Download / Share */
   width: 34px;
   height: 34px;
   border: none;
@@ -382,9 +381,90 @@ header h1 {
   display: inline-flex;
 }
 
-.play-fab img { width: 100%; height: 100%; display: block; }
+.play-fab svg { width: 100%; height: 100%; display: block; overflow: visible; } /* let the pulse ring stroke show past the edge */
 .play-fab:hover { filter: brightness(1.08); }
 .play-fab:disabled { opacity: 0.5; cursor: default; }
+
+/* mobile toolbar order: Download, Share, Play (the Run/Play wrapper sits last).
+   Desktop keeps DOM order: Run, Share, Download. */
+@media (max-width: 767px) {
+  .toolbar .download-action { order: 1; }
+  .toolbar .share-action { order: 2; }
+  .toolbar .run-affordance { order: 3; }
+}
+
+/* on-load affordance: a fast-breathing aurora inside the Run button + a wide
+   feathered glow, shown ~1s after load for 3s, then faded out */
+.run-affordance {
+  position: relative;
+  display: inline-flex;
+  border-radius: 6px;
+  isolation: isolate; /* contain the glow pseudo's z-index */
+}
+/* the breathing glow lives on a pseudo with a STATIC feathered shadow; the breath
+   animates transform+opacity (compositor) instead of box-shadow (CPU repaint) */
+.run-affordance::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1; /* behind the button */
+  box-shadow: 0 0 30px 11px rgba(3, 135, 175, 0.36); /* desktop resting glow */
+  opacity: 0;
+  pointer-events: none;
+}
+/* mobile: full-strength glow (the small play-fab needs a stronger cue) */
+@media (max-width: 767px) {
+  .run-affordance::before { box-shadow: 0 0 30px 11px rgba(3, 135, 175, 0.5); }
+}
+/* fade in, grow/shrink ×2, fade out — over the 3s pulse window (keep in sync with
+   the setRunPulse timers) */
+.run-affordance.pulsing::before {
+  animation: run-pulse-glow 3s ease-in-out forwards;
+}
+@keyframes run-pulse-glow {
+  0%   { opacity: 0; transform: scale(0.82); } /* appear */
+  17%  { opacity: 1; transform: scale(1); }    /* faded in */
+  33%  { opacity: 1; transform: scale(1.06); } /* grow */
+  50%  { opacity: 1; transform: scale(1); }    /* shrink */
+  67%  { opacity: 1; transform: scale(1.06); } /* grow */
+  83%  { opacity: 1; transform: scale(1); }    /* shrink */
+  100% { opacity: 0; transform: scale(0.82); } /* fade out (same length as fade in) */
+}
+.run-affordance > :not(.run-aurora) { position: relative; z-index: 1; } /* button above the aurora */
+.run-aurora {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.run-affordance.pulsing .run-aurora { opacity: 0.7; }
+
+/* during the affordance: swap the play icon's fill circle (path[0]) for a theme-blue
+   ring so the aurora shows inside it, and turn the triangle (path[1]) black; the
+   desktop "Run ▶" text goes black too — all for contrast over the light aurora */
+.play-circle { stroke: transparent; stroke-width: 7; transition: fill 0.4s ease, stroke 0.4s ease; }
+.run-affordance.pulsing .play-circle { fill: transparent; stroke: var(--accent); }
+.play-triangle { transition: fill 0.4s ease; }
+.run-affordance.pulsing .play-triangle { fill: #000; }
+/* desktop Run button only (not the mobile play-fab, which is a square button and
+   would show a theme-color square behind its circular icon) */
+.run-affordance.pulsing button:not(.play-fab) {
+  color: #000 !important;
+  border-color: var(--accent) !important;
+  /* +1px inner ring (1px border + 1px = ~2px stroke, matching the play-fab ring)
+     via box-shadow so the button size — and toolbar height — don't change;
+     border-width would have reflowed the toolbar */
+  box-shadow: inset 0 0 0 1px var(--accent) !important;
+}
+/* the play-fab is a circle, so round the wrapper (→ circular drop shadow) and the aurora */
+.run-affordance:has(.play-fab),
+.run-affordance:has(.play-fab) .run-aurora { border-radius: 50%; }
 
 .icon-btn:disabled { opacity: 0.4; cursor: default; }
 .icon-btn:disabled:hover { background: none; }
@@ -599,10 +679,30 @@ main {
   background: #8CC2E7;
 }
 
+/* blue-noise grain over the sketch viewer (same tile as the gallery) */
+.viewer-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* don't block orbiting the model */
+  z-index: 1; /* over the 3D canvas, under the overlay prompts */
+  background-image: url(/bluenoise64.png);
+  background-repeat: repeat;
+  background-size: auto;
+  image-rendering: pixelated;
+  filter: grayscale(0.7);
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+  transition: opacity 0.5s ease; /* eases down when the first run lands */
+}
+/* stronger grain on the empty viewer until the first Run */
+.viewer-wrap.pre-run::after { opacity: 0.19; }
+
 /* floats over the canvas: idle prompt, "Running…", or "Run Failed" */
 .canvas-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2; /* keep prompts crisp above the grain overlay */
   display: flex;
   align-items: center;
   justify-content: center;

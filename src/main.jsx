@@ -80,8 +80,10 @@ function Playground() {
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
   const [running, setRunning] = createSignal(false);
+  const [runningDelayed, setRunningDelayed] = createSignal(false); // running() debounced 0.3s — skips the blip on fast runs
   const [engineReady, setEngineReady] = createSignal(false); // vZome engine finished loading in the worker
   const [hasResult, setHasResult] = createSignal(false);
+  const [everRun, setEverRun] = createSignal(false); // first Run yet? (one-shot — drives stronger pre-run viewer grain)
   const [docsOpen, setDocsOpen] = createSignal(true);
   const [codeOpen, setCodeOpen] = createSignal(true);
   const [viewOpen, setViewOpen] = createSignal(true);
@@ -97,6 +99,7 @@ function Playground() {
   const [title, setTitle] = createSignal(DEFAULT_TITLE);
   const [body, setBody] = createSignal(DEFAULT_BODY);
   const [editingDoc, setEditingDoc] = createSignal(false);
+  const [runPulse, setRunPulse] = createSignal(false); // brief on-load aurora+glow affordance on the Run button
   const DEFAULT_CODE_W = 620; // default editor pane width (double-click the divider to reset)
   const [codeW, setCodeW] = createSignal(DEFAULT_CODE_W); // editor pane width; viewer takes the rest
   let restoreCodeW = DEFAULT_CODE_W; // width to pop back to after a drag collapses the code pane
@@ -223,11 +226,18 @@ function Playground() {
   const shareUrl = () => `${location.origin}/s/${slugFromParts(parts())}`;
 
   // The message floated over the canvas; null once a result renders (overlay hidden).
+  // Show "Running…" only if the run outlasts 0.3s; clear instantly when it ends.
+  createEffect(on(running, (isRunning) => {
+    if (!isRunning) { setRunningDelayed(false); return; }
+    const t = setTimeout(() => setRunningDelayed(true), 300);
+    onCleanup(() => clearTimeout(t));
+  }));
+
   const overlayState = () => {
     if (hasResult()) return null;
-    if (running()) return engineReady() ? 'running' : 'loading';
+    if (running()) return !engineReady() ? 'loading' : (runningDelayed() ? 'running' : null);
     if (errored()) return 'error';
-    return 'idle';
+    return null; // idle: no prompt over the canvas (the Run button affords it)
   };
 
   let editorEl;
@@ -240,6 +250,16 @@ function Playground() {
   let lastMesh = null;
   let templateXml = null;
   let templateDataUrl = null;
+  // Snapshot of the content the moment it was last published or loaded (code +
+  // title + body + slug parts). If the current content still matches, the sketch
+  // is already online and Share can jump straight to the link.
+  let published = null;
+  const partsFromSlug = (slug) => { const a = slug.split('-'); return { words: a.slice(0, -1), suffix: a.at(-1) }; };
+  const isUnchanged = () =>
+    published &&
+    editor.state.doc.toString() === published.code &&
+    title() === published.title &&
+    body() === published.body;
 
   // Responsive layout observer — set up synchronously so onCleanup registers in
   // the reactive root (avoids leaking/duplicating observers across HMR).
@@ -294,6 +314,7 @@ function Playground() {
 
   const run = () => {
     if (!worker) return; // worker is created in onMount; ignore clicks before it's ready
+    setEverRun(true); // one-shot: drop the stronger pre-run viewer grain
     setOutput('');
     setRunning(true);
     setHasResult(false);
@@ -311,6 +332,44 @@ function Playground() {
     currentInput = { name: file.name, text: await file.text() };
     setInputName(file.name);
   };
+
+  // On-load affordance: 1s after load, bloom a fast-breathing aurora inside the
+  // Run button (with a wide glow) for 3s to signal Run is the only next step.
+  let runAuroraCanvas, runAuroraCtl;
+  const RUN_AURORA = {
+    res: 48,
+    maxFps: 30,
+    hover: {
+      duration: 0.3,
+      from: { blobStrength: 0.18, hueSpread: 0.8 },
+      to: { blobStrength: 0.55, hueSpread: 3.0 },
+      breath: { rate: 0.31 * 1.5 * 1.3, amount: { blobStrength: 0.2, hueSpread: 1.2 } }, // 1.5× normal, then +30%
+    },
+  };
+  createEffect(on(runPulse, (on) => {
+    runAuroraCtl?.destroy();
+    runAuroraCtl = undefined;
+    if (!on) return; // off → leave the last frame to fade out via CSS opacity
+    queueMicrotask(() => {
+      if (!runAuroraCanvas) return;
+      try {
+        // bloom much more severe on mobile (the play-fab shows it most prominently): 30%, +40%, +30%
+        const to = RUN_AURORA.hover.to;
+        const m = 1.3 * 1.4 * 1.3;
+        const opts = mobile()
+          ? { ...RUN_AURORA, hover: { ...RUN_AURORA.hover, to: { blobStrength: to.blobStrength * m, hueSpread: to.hueSpread * m } } }
+          : RUN_AURORA;
+        runAuroraCtl = createAuroraGridGL([runAuroraCanvas], [{ seed: 3 }], opts);
+        runAuroraCtl.setHover(0, true); // bloom + breathe
+      } catch { /* no WebGL2 — the glow still draws attention */ }
+    });
+  }));
+  onMount(() => {
+    const t1 = setTimeout(() => setRunPulse(true), 1000);
+    const t2 = setTimeout(() => setRunPulse(false), 4000); // 1s delay + 3s on screen
+    onCleanup(() => { clearTimeout(t1); clearTimeout(t2); });
+  });
+  onCleanup(() => runAuroraCtl?.destroy());
 
   // lastMesh is the engine's mesh JSON as a string; pretty-print it for export.
   const prettyMesh = () => {
@@ -402,11 +461,17 @@ function Playground() {
   };
 
   const openShare = () => {
-    setParts(generateSlugParts());
-    setShowInGallery(true);
     setCopied(false);
     setShareError(null);
-    setShareStep('choose');
+    if (isUnchanged()) {
+      // unchanged since it was published/loaded → already online; show its link
+      setParts(published.parts);
+      setShareStep('link');
+    } else {
+      setParts(generateSlugParts());
+      setShowInGallery(true);
+      setShareStep('choose');
+    }
     setShareOpen(true);
   };
 
@@ -434,6 +499,7 @@ function Playground() {
       });
       if (res.status === 413) { setNotice('Your script is longer than the server allows.'); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      published = { code: editor.state.doc.toString(), title: title(), body: body(), parts: parts() };
       setShareStep('link');
     } catch (e) {
       setShareError('Publish failed: ' + e.message + ' (backend running?)');
@@ -461,6 +527,8 @@ function Playground() {
       setHasResult(false); // fresh sketch — show the idle prompt over the canvas until Run
       setErrored(false);
       setRunning(false); // defensive: don't leave the overlay stuck if a run was in flight
+      // it's already online at this slug — Share can link straight to it until edited
+      published = { code: sk.code, title: titleFromDescription(desc) || pretty, body: bodyFromDescription(desc), parts: partsFromSlug(key) };
     } catch (e) {
       setNotice('Load error: ' + e.message);
     }
@@ -490,25 +558,31 @@ function Playground() {
           <input type="file" ref={fileInput} hidden onChange={onFileChange} />
           <Show when={!mobile()}><span class="muted">{inputName()}</span></Show>
           <span class="spacer" />
+          <span class="run-affordance" classList={{ pulsing: runPulse() }}>
+            <canvas class="run-aurora" width="64" height="64" ref={(el) => (runAuroraCanvas = el)} />
+            <Show when={mobile()} fallback={
+              <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
+            }>
+              <button class="play-fab" onClick={run} disabled={running()} title="Run">
+                <svg viewBox="0 0 122.88 122.88" xmlns="http://www.w3.org/2000/svg" aria-label="Run">
+                  <path class="play-circle" fill-rule="evenodd" clip-rule="evenodd" fill="#0387af" d="M61.44,0c33.93,0,61.44,27.51,61.44,61.44s-27.51,61.44-61.44,61.44S0,95.37,0,61.44S27.51,0,61.44,0L61.44,0 L61.44,0z" />
+                  <path class="play-triangle" fill-rule="evenodd" clip-rule="evenodd" fill="#FFFFFF" d="M84.32,65.41c3.31-2.13,3.3-4.51,0-6.4L50.13,39.36c-2.7-1.69-5.51-0.7-5.43,2.82l0.11,39.7 c0.23,3.82,2.41,4.86,5.62,3.1L84.32,65.41L84.32,65.41L84.32,65.41z" />
+                </svg>
+              </button>
+            </Show>
+          </span>
           <Show when={mobile()} fallback={
-            <Button variant="outlined" size="small" onClick={run} disabled={running()}>Run ▶</Button>
+            <Button class="share-action" variant="outlined" size="small" onClick={openShare}>Share</Button>
           }>
-            <button class="play-fab" onClick={run} disabled={running()} title="Run">
-              <img src="/play-icon.svg" alt="Run" />
-            </button>
-          </Show>
-          <Show when={mobile()} fallback={
-            <Button variant="outlined" size="small" onClick={download} disabled={!hasResult()}>Download</Button>
-          }>
-            <button class="icon-btn" onClick={download} disabled={!hasResult()} title="Download">
-              <img src="/download-icon.svg" alt="Download" />
-            </button>
-          </Show>
-          <Show when={mobile()} fallback={
-            <Button variant="outlined" size="small" onClick={openShare}>Share</Button>
-          }>
-            <button class="icon-btn" onClick={openShare} title="Share">
+            <button class="icon-btn share-action" onClick={openShare} title="Share">
               <img src="/share-icon.svg" alt="Share" />
+            </button>
+          </Show>
+          <Show when={mobile()} fallback={
+            <Button class="download-action" variant="outlined" size="small" onClick={download} disabled={!hasResult()}>Download</Button>
+          }>
+            <button class="icon-btn download-action" onClick={download} disabled={!hasResult()} title="Download">
+              <img src="/download-icon.svg" alt="Download" />
             </button>
           </Show>
         </div>
@@ -590,15 +664,14 @@ function Playground() {
             <img src="/3d-cube.svg" alt="" />
             <span class="view-tab-label">3D</span>
           </button>
-          <div class="viewer-wrap">
+          <div class="viewer-wrap" classList={{ 'pre-run': !everRun() }}>
             <vzome-viewer id="viewer" preview={false}> </vzome-viewer>
             <Show when={overlayState()}>
               <div class="canvas-overlay">
                 <div class="canvas-overlay-card" classList={{ error: overlayState() === 'error' }}>
                   {overlayState() === 'loading' ? 'Loading vZome…'
                     : overlayState() === 'running' ? 'Running…'
-                    : overlayState() === 'error' ? 'Run Failed'
-                    : <>Nothing to see here.<br />Press RUN.</>}
+                    : 'Run Failed'}
                 </div>
               </div>
             </Show>
@@ -672,19 +745,26 @@ function Playground() {
 // background (corner color, per-channel tolerance), contract the selection and
 // feather it — Photoshop-tuned values (wand 16, contract 3px, feather 6px) that
 // leave a soft background-color glow hugging the model — then delete to alpha.
+// Keyed at ~display resolution (KEY_MAXW), not the source 1200px, with contract/
+// feather scaled to match — ~6x less pixel work, visually identical at card size.
 const KEY_TOL = 16;
 const KEY_CONTRACT = 3;
 const KEY_FEATHER = 6;
+const KEY_MAXW = 480;
 function chromaKeyCard(img) {
-  const w = img.naturalWidth, h = img.naturalHeight;
+  const scale = Math.min(1, KEY_MAXW / img.naturalWidth);
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d');
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(img, 0, 0, w, h); // downscale here
   const id = ctx.getImageData(0, 0, w, h); // throws if the image is cross-origin tainted
   const d = id.data;
   const bg = [d[0], d[1], d[2]];
+  const contract = Math.max(1, Math.round(KEY_CONTRACT * scale)); // erode iterations, scaled
+  const r = Math.max(1, Math.round((KEY_FEATHER * scale) / 2));   // blur radius, scaled
 
   // selection mask: 1 = background (within tolerance of the corner color)
   let mask = new Float32Array(w * h);
@@ -698,7 +778,7 @@ function chromaKeyCard(img) {
   let tmp = new Float32Array(w * h);
 
   // contract: erode the selection (3x3 min) so a ring of bg pixels stays opaque
-  for (let it = 0; it < KEY_CONTRACT; it++) {
+  for (let it = 0; it < contract; it++) {
     for (let y = 0; y < h; y++) {
       const y0 = Math.max(0, y - 1) * w, y1 = y * w, y2 = Math.min(h - 1, y + 1) * w;
       for (let x = 0; x < w; x++) {
@@ -714,7 +794,6 @@ function chromaKeyCard(img) {
   }
 
   // feather: separable box blur x3 ≈ gaussian of the requested radius
-  const r = Math.max(1, Math.round(KEY_FEATHER / 2));
   const span = 2 * r + 1;
   for (let pass = 0; pass < 3; pass++) {
     for (let y = 0; y < h; y++) { // horizontal
@@ -747,19 +826,24 @@ function chromaKeyCard(img) {
 // so the aurora behind shows through. A separate CORS copy is loaded to read the
 // pixels; if that's blocked (cross-origin without CORS headers) or unreadable, we
 // silently keep the opaque image.
+const keyCache = new Map(); // src URL → keyed data URL, so paginating back doesn't recompute
 function keyCardImage(imgEl) {
   if (imgEl.dataset.keyed) return; // don't re-key the data: URL we just set
+  const src = imgEl.currentSrc || imgEl.src;
+  const cached = keyCache.get(src);
+  if (cached) { imgEl.dataset.keyed = '1'; imgEl.src = cached; return; }
   const probe = new Image();
   probe.crossOrigin = 'anonymous';
   probe.onload = () => {
     try {
       const keyed = chromaKeyCard(probe);
+      keyCache.set(src, keyed);
       imgEl.dataset.keyed = '1'; // set before swapping src so the re-fired onLoad fades it in
       imgEl.src = keyed;
     } catch { imgEl.classList.add('ready'); /* unreadable — fade in the opaque image */ }
   };
   probe.onerror = () => imgEl.classList.add('ready'); // CORS blocked — fade in the opaque image
-  probe.src = imgEl.currentSrc || imgEl.src;
+  probe.src = src;
 }
 
 function Gallery() {
@@ -819,7 +903,7 @@ function Gallery() {
   };
   // rebuild the shared controller on every page (items() changes on paginate)
   createEffect(on(items, (list) => {
-    aurora?.stop();
+    aurora?.destroy();
     aurora = undefined;
     setHoverReady(false);
     if (!list?.length) return;
@@ -844,7 +928,7 @@ function Gallery() {
       idle(() => setHoverReady(true), { timeout: 2500 });
     });
   }));
-  onCleanup(() => aurora?.stop());
+  onCleanup(() => aurora?.destroy());
 
   return (
     <>
