@@ -585,6 +585,13 @@ function Playground() {
               <img src="/download-icon.svg" alt="Download" />
             </button>
           </Show>
+          <Show when={mobile()} fallback={
+            <Button class="gallery-action" variant="outlined" size="small" href="/gallery" onClick={() => (location.href = '/gallery')}>Gallery</Button>
+          }>
+            <a class="icon-btn gallery-action" href="/gallery" title="Gallery">
+              <img src="/gallery-icon.svg" alt="Gallery" />
+            </a>
+          </Show>
         </div>
       </header>
       <main ref={mainEl}>

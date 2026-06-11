@@ -385,9 +385,10 @@ header h1 {
 .play-fab:hover { filter: brightness(1.08); }
 .play-fab:disabled { opacity: 0.5; cursor: default; }
 
-/* mobile toolbar order: Download, Share, Play (the Run/Play wrapper sits last).
-   Desktop keeps DOM order: Run, Share, Download. */
+/* mobile toolbar order: Gallery, Download, Share, Play (the Run/Play wrapper sits
+   last as the affordance). Desktop keeps DOM order: Run, Share, Download, Gallery. */
 @media (max-width: 767px) {
+  .toolbar .gallery-action { order: 0; }
   .toolbar .download-action { order: 1; }
   .toolbar .share-action { order: 2; }
   .toolbar .run-affordance { order: 3; }
