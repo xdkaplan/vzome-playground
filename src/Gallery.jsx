@@ -209,7 +209,7 @@ export function Gallery() {
     <>
       <header>
         <div class="brand">
-          <a class="brand-link" href="/gallery"><img class="logo" src="/vzome-logo.svg" alt="vZome" /></a>
+          <a class="brand-link" href="/gallery"><img class="logo" src="/vzome-logo.svg" alt="vZome" title={`build ${__COMMIT__}`} /></a>
           <a class="brand-link" href="/gallery"><h1>vZome Playground</h1></a>
           <span class="spacer" />
           <a class="create-link" href="/">Create a sketch</a>

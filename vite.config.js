@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
+import { execSync } from 'node:child_process';
+
+// Short commit hash, baked in at build time for the logo's version tooltip.
+const commit = (() => {
+  try { return execSync('git rev-parse --short HEAD').toString().trim(); }
+  catch { return 'dev'; }
+})();
 
 export default defineConfig({
   plugins: [solid()],
+  define: { __COMMIT__: JSON.stringify(commit) },
   // Ensure a single solid-js instance so SUID components track app signals
   // (e.g. reactive `disabled` on buttons). Without this, Vite can bundle a
   // separate solid-js for SUID's deep imports and reactivity breaks.
