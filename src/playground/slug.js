@@ -34,3 +34,11 @@ export function generateSlugParts() {
 export function slugFromParts(parts) {
   return [...parts.words, parts.suffix].join('-');
 }
+
+// "stott-cantor-euler-r41be" -> "Stott Cantor Euler R41BE"
+export function prettySlug(slug) {
+  const parts = slug.split('-');
+  const suffix = parts.pop();
+  const words = parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  return [...words, suffix.toUpperCase()].join(' ');
+}
