@@ -19,7 +19,7 @@ const VIEWER_BG = '#8CC2E7'; // matches the vzome-viewer's rendered background
 // `getTitle` is read only to name the downloaded mesh file. The methods
 // getCode/setCode/getInput/loadInput/resetRunState/captureThumbnail are the
 // surface the share module needs to persist and load a sketch.
-export function createWorkspace({ getTitle } = {}) {
+export function createWorkspace({ getTitle, blankStart = false } = {}) {
   const [errored, setErrored] = createSignal(false); // last run threw — drives the canvas overlay
   const [output, setOutput] = createSignal('');
   const [inputName, setInputName] = createSignal('no input');
@@ -56,7 +56,7 @@ export function createWorkspace({ getTitle } = {}) {
 
   onMount(async () => {
     editor = new EditorView({
-      doc: DEFAULT_SCRIPT,
+      doc: blankStart ? '' : DEFAULT_SCRIPT, // shared-link load starts blank; loadSketch fills it in
       extensions: [basicSetup, javascript(), apiCompletions],
       parent: editorEl,
     });

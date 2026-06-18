@@ -10,6 +10,7 @@ import { createPaneLayout } from './playground/pane-layout.js';
 import { createWorkspace } from './playground/workspace.js';
 import { createShare } from './playground/share.js';
 import { DEFAULT_TITLE, DEFAULT_BODY } from './playground/description.js';
+import DEFAULT_SCRIPT from './defaultScript.js?raw'; // for the 404 fallback on a shared-link load
 
 import 'https://www.vzome.com/modules/vzome-viewer.js';
 
@@ -20,17 +21,23 @@ const TITLE_MAX = 55;
 const MAX_BODY = 610;
 
 export function Playground() {
+  // A shared-link load (/s/:slug) fetches its content async. Seed the docs + editor
+  // EMPTY (not the defaults) so we don't flash "Project Title"/Sea-Urchin for a frame
+  // and then reflow when the real sketch arrives; loadingSketch() gates that window.
+  const sharedSlug = location.pathname.match(/^\/s\/(.+)$/)?.[1] ?? null;
+  const [loadingSketch, setLoadingSketch] = createSignal(!!sharedSlug);
+
   // ── Description (title + body) shown in the docs pane ───────────────────────
   const [docsOpen, setDocsOpen] = createSignal(true);
-  const [title, setTitle] = createSignal(DEFAULT_TITLE);
-  const [body, setBody] = createSignal(DEFAULT_BODY);
+  const [title, setTitle] = createSignal(sharedSlug ? '' : DEFAULT_TITLE);
+  const [body, setBody] = createSignal(sharedSlug ? '' : DEFAULT_BODY);
   const [editingDoc, setEditingDoc] = createSignal(false);
   const [notice, setNotice] = createSignal(null); // OK-modal message (shared-link load failures)
 
   // ── Feature clusters, each in its own module ───────────────────────────────
   // Workspace: CodeMirror editor + vZome worker + vzome-viewer + the run
   // lifecycle. getTitle is read only to name the downloaded mesh file.
-  const workspace = createWorkspace({ getTitle: title });
+  const workspace = createWorkspace({ getTitle: title, blankStart: !!sharedSlug });
   const { running, hasResult, everRun, output, overlayState, inputName, run, download, onFileChange, refEditor } = workspace;
 
   // Resizable editor↔viewer panes (drag, reflow, mobile flip); measureEditor
@@ -60,10 +67,17 @@ export function Playground() {
 
   // Load a shared sketch on startup (/s/:slug). The editor is created in the
   // workspace's onMount (registered first, so it runs first); loadSketch only
-  // needs the editor, not the worker or viewer.
-  onMount(() => {
-    const shared = location.pathname.match(/^\/s\/(.+)$/);
-    if (shared) loadSketch(decodeURIComponent(shared[1]));
+  // needs the editor, not the worker or viewer. On a 404/error, fall back to the
+  // normal defaults so the playground is still usable.
+  onMount(async () => {
+    if (!sharedSlug) return;
+    const ok = await loadSketch(decodeURIComponent(sharedSlug));
+    if (!ok) {
+      setTitle(DEFAULT_TITLE);
+      setBody(DEFAULT_BODY);
+      workspace.setCode(DEFAULT_SCRIPT);
+    }
+    setLoadingSketch(false);
   });
 
   return (
@@ -125,7 +139,7 @@ export function Playground() {
             <div class="docs-header">
               <Show
                 when={editingDoc()}
-                fallback={<span class="docs-title">{title()}</span>}
+                fallback={<span class="docs-title">{loadingSketch() ? 'Loading…' : title()}</span>}
               >
                 <div class="docs-title-field">
                   <input

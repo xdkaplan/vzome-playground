@@ -40,6 +40,7 @@ header {
 .logo {
   height: 28px;
   width: auto;
+  aspect-ratio: 1575 / 943; /* reserve the box before the SVG loads so the title doesn't shift right (CLS) */
   display: block;
 }
 

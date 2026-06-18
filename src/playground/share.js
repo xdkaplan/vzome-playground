@@ -82,7 +82,7 @@ export function createShare({ workspace, getTitle, getBody, setTitle, setBody, s
       const res = await fetch('/api/sketch/' + encodeURIComponent(key));
       if (!res.ok) {
         setNotice(`Sketch not found: "${pretty}"`);
-        return;
+        return false;
       }
       const sk = await res.json();
       workspace.setCode(sk.code);
@@ -96,8 +96,10 @@ export function createShare({ workspace, getTitle, getBody, setTitle, setBody, s
       // it's already online at this slug — Share can link straight to it until edited
       // Alex: The KV worker has a bit of a lag, I wonder if this would create issues
       published = { code: sk.code, title: titleFromDescription(desc) || pretty, body: bodyFromDescription(desc), parts: partsFromSlug(key) };
+      return true;
     } catch (e) {
       setNotice('Load error: ' + e.message);
+      return false;
     }
   };
 
