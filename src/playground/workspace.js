@@ -149,7 +149,7 @@ export function createWorkspace({ getTitle, blankStart = false } = {}) {
 
   // Capture the viewer and composite it onto a 1200x630 OG card: the model is
   // contain-fit and centered, with the rest filled in the viewer's own blue so
-  // the padding is seamless. Returns base64 PNG (no data: prefix) or null.
+  // the padding is seamless. Returns base64 WebP (PNG on old Safari; no data: prefix) or null.
   const captureThumbnail = async () => {
     try {
       const bmp = await createImageBitmap(await viewer.captureImage());
@@ -196,7 +196,7 @@ export function createWorkspace({ getTitle, blankStart = false } = {}) {
       const scale = Math.min(SQ / sw, SQ / sh);
       const dw = sw * scale, dh = sh * scale;
       ctx.drawImage(bmp, sx, sy, sw, sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
-      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/webp', 0.5));
       const dataUrl = await new Promise((res) => {
         const r = new FileReader();
         r.onloadend = () => res(String(r.result));

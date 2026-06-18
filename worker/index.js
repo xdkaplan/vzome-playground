@@ -47,6 +47,19 @@ const prettySlug = (slug) =>
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ') || slug;
 
+// Sniff the image MIME from the magic bytes. Cards may be PNG, JPEG, or WebP —
+// and Safari's toBlob('image/webp') silently falls back to PNG — so never assume
+// a single type when serving og:<slug>.
+const sniffImageType = (buf) => {
+  const u = new Uint8Array(buf);
+  if (u[0] === 0x89 && u[1] === 0x50) return 'image/png';   // 89 50 4E 47  (PNG)
+  if (u[0] === 0xff && u[1] === 0xd8) return 'image/jpeg';  // FF D8        (JPEG)
+  if (u[0] === 0x52 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x46 &&  // "RIFF"
+      u[8] === 0x57 && u[9] === 0x45 && u[10] === 0x42 && u[11] === 0x50)  // "WEBP"
+    return 'image/webp';
+  return 'image/png'; // safe default
+};
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -107,14 +120,14 @@ export default {
       return json({ ok: true, slug });
     }
 
-    // --- OG card image (PNG) ------------------------------------------------
+    // --- OG card image (PNG / JPEG / WebP — type sniffed from bytes) --------
     if (pathname.startsWith('/og/') && request.method === 'GET') {
       const slug = decodeURIComponent(pathname.slice('/og/'.length).replace(/\.png$/, '')).toLowerCase();
       const img = await env.SKETCHES.get('og:' + slug, 'arrayBuffer');
       if (!img) return new Response('not found', { status: 404 });
       return new Response(img, {
         headers: {
-          'content-type': 'image/png',
+          'content-type': sniffImageType(img),
           'cache-control': 'public, max-age=31536000, immutable',
           // allow the gallery to read pixels (chroma-key the bg to alpha) even
           // when the card is loaded cross-origin (e.g. dev against prod images)
