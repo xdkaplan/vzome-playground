@@ -12,8 +12,6 @@ import { createShare } from './playground/share.js';
 import { DEFAULT_TITLE, DEFAULT_BODY } from './playground/description.js';
 import DEFAULT_SCRIPT from './defaultScript.js?raw'; // for the 404 fallback on a shared-link load
 
-import 'https://www.vzome.com/modules/vzome-viewer.js';
-
 // Hard cap on the sketch name at input time — a Fibonacci number.
 const TITLE_MAX = 55;
 

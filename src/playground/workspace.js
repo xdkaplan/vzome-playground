@@ -60,12 +60,9 @@ export function createWorkspace({ getTitle, blankStart = false } = {}) {
       extensions: [basicSetup, javascript(), apiCompletions],
       parent: editorEl,
     });
-    viewer = document.querySelector('vzome-viewer');
+    viewer = document.querySelector('vzome-viewer'); // element ref; upgrades once its module loads
 
-    templateXml = await (await fetch('/template.vZome')).text();
-    templateDataUrl = xmlToDataUrl(templateXml);
-    viewer.src = templateDataUrl;
-
+    // Engine worker first so it loads in parallel — it's the long pole.
     worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const { type, payload } = e.data;
@@ -90,6 +87,16 @@ export function createWorkspace({ getTitle, blankStart = false } = {}) {
         setErrored(true);
       }
     };
+
+    // The vzome-viewer web component is heavy (Three.js); load it on demand so it
+    // no longer gates first paint (it was a static import). Fetch the template in
+    // parallel, then show it once the viewer's custom element is defined.
+    const templateText = fetch('/template.vZome').then((r) => r.text());
+    await import('https://www.vzome.com/modules/vzome-viewer.js');
+    await customElements.whenDefined('vzome-viewer');
+    templateXml = await templateText;
+    templateDataUrl = xmlToDataUrl(templateXml);
+    viewer.src = templateDataUrl;
   });
 
   const run = () => {
