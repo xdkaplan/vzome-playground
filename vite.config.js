@@ -25,6 +25,20 @@ export default defineConfig({
     rollupOptions: { external: [/^https:\/\//] },
   },
   build: {
-    rollupOptions: { external: [/^https:\/\//] },
+    rollupOptions: {
+      external: [/^https:\/\//],
+      // Split vendors into cacheable chunks; with the lazy routes, /gallery only
+      // fetches what it needs (solid + grid) and never suid/codemirror.
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@suid')) return 'suid';
+            if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer')) return 'codemirror';
+            if (id.includes('solid-js') || id.includes('@solid')) return 'solid';
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
 });

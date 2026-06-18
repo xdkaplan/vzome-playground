@@ -2,11 +2,12 @@
 //
 // The aurora-glass thumbnail effect is currently DISABLED via AURORA_ENABLED — the
 // code (chroma-key + WebGL aurora wiring) is intentionally kept so it can be flipped
-// back on. With it off, cards just show the static og thumbnail.
+// back on. With it off, cards just show the static og thumbnail. aurora.js is NOT
+// statically imported — it's lazy-loaded (dynamic import) only if re-enabled, so its
+// ~445 lines of WebGL stay out of the gallery bundle.
 
 import { createSignal, onMount, onCleanup, Show, For, createEffect, on } from 'solid-js';
 import DEMO_GALLERY from './data/demo-gallery.json';
-import { createAuroraGridGL } from './aurora.js';
 import { prettySlug } from './playground/slug.js';
 
 const AURORA_ENABLED = false; // aurora glass behind thumbnails — OFF (dead code kept below)
@@ -182,7 +183,7 @@ export function Gallery() {
     setHoverReady(false);
     if (!AURORA_ENABLED) return; // aurora off — cards show the static og thumbnail (wiring below kept for re-enable)
     if (!list?.length) return;
-    queueMicrotask(() => {                          // let the new refs settle
+    queueMicrotask(async () => {                    // let the new refs settle
       const cs = auroraCanvases.slice(0, list.length);
       if (cs.some((c) => !c)) return;
       try {
@@ -192,6 +193,7 @@ export function Gallery() {
         const opts = mobile
           ? { ...AURORA, hover: { ...AURORA.hover, from: { ...AURORA.hover.from, blobStrength: 0.10, hueSpread: AURORA.hover.from.hueSpread * 1.4 } } }
           : AURORA;
+        const { createAuroraGridGL } = await import('./aurora.js'); // lazy: only fetched if re-enabled
         aurora = createAuroraGridGL(cs, list.map((_, i) => ({ seed: i + 1, time: i * 1.37 })), opts);
       } catch {                                      // no WebGL2 → flat baby blue
         cs.forEach((c) => { const x = c.getContext('2d'); x.fillStyle = '#8CC2E7'; x.fillRect(0, 0, c.width, c.height); });
@@ -241,6 +243,7 @@ export function Gallery() {
                         src={it.thumb || `/og/${it.slug}.png`}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         onLoad={(e) => {
                           const im = e.currentTarget;
                           if (im.dataset.keyed) { im.classList.add('ready'); return; }
